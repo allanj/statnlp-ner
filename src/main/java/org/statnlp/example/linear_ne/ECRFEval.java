@@ -5,7 +5,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.util.ArrayList;
+import java.lang.ProcessBuilder.Redirect;
+import java.util.List;
 
 import org.statnlp.commons.io.RAWF;
 import org.statnlp.commons.types.Instance;
@@ -30,11 +31,13 @@ public class ECRFEval {
 			pw = RAWF.writer(nerOut);
 			for(int index=0;index<testInsts.length;index++){
 				EInst eInst = (EInst)testInsts[index];
-				ArrayList<String> predEntities = eInst.getPrediction();
-				ArrayList<String> trueEntities = eInst.getOutput();
+				List<String> predEntities = eInst.getPrediction();
+				List<String> trueEntities = eInst.getOutput();
 				Sentence sent = eInst.getInput();
 				for(int i=0;i<sent.length();i++){
-					pw.write(sent.get(i).getForm()+" "+sent.get(i).getTag()+" "+trueEntities.get(i)+" "+predEntities.get(i)+"\n");
+					String goldEntity = trueEntities.get(i).replace(EConf.E_, EConf.I_);
+					goldEntity = goldEntity.replace(EConf.S_, EConf.B_);
+					pw.write(sent.get(i).getForm()+" "+sent.get(i).getTag()+" "+goldEntity+" "+predEntities.get(i)+"\n");
 				}
 				pw.write("\n");
 				
@@ -53,13 +56,13 @@ public class ECRFEval {
 			System.err.println("perl "+evalScript+" < "+outputFile);
 			ProcessBuilder pb = null;
 			if(windows){
-				pb = new ProcessBuilder("D:/Perl64/bin/perl","E:/Framework/data/semeval10t1/conlleval.pl"); 
+				pb = new ProcessBuilder("D:/Perl64/bin/perl","eval/conlleval.pl"); 
 			}else{
 				pb = new ProcessBuilder(evalScript); 
 			}
 			pb.redirectInput(new File(outputFile));
-			//pb.redirectOutput(Redirect.INHERIT);
-			//pb.redirectError(Redirect.INHERIT);
+			pb.redirectOutput(Redirect.INHERIT);
+			pb.redirectError(Redirect.INHERIT);
 			Process process = pb.start();
 			BufferedReader br = new BufferedReader(new InputStreamReader(process.getInputStream(), "UTF-8")) ;
 			while (!br.ready()) ; // wait until buffered reader is ready.
@@ -83,8 +86,8 @@ public class ECRFEval {
 		for(int index=0;index<predictions.length;index++){
 			Instance inst = predictions[index];
 			EInst eInst = (EInst)inst;
-			ArrayList<String> predEntities = eInst.getPrediction();
-			ArrayList<String> trueEntities = eInst.getOutput();
+			List<String> predEntities = eInst.getPrediction();
+			List<String> trueEntities = eInst.getOutput();
 			Sentence sent = eInst.getInput();
 			for(int i=0;i<sent.length();i++){
 				int headIndex = sent.get(i).getHeadIndex()+1;

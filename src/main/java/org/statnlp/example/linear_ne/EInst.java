@@ -14,9 +14,10 @@ public class EInst extends BaseInstance<EInst, Sentence, List<String>> {
 		super(instanceId, weight);
 	}
 	
-	public EInst(int instanceId, double weight, Sentence sent) {
+	public EInst(int instanceId, double weight, Sentence sent, List<String> output) {
 		super(instanceId, weight);
 		this.input = sent;
+		this.output = output;
 	}
 	
 	@Override

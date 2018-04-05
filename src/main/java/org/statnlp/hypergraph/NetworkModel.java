@@ -143,7 +143,7 @@ public abstract class NetworkModel implements Serializable{
 	
 	public Instance[][] splitInstancesForTest(Instance[] testInsts) {
 		
-		System.err.println("#instances="+testInsts.length);
+//		System.err.println("#instances="+testInsts.length);
 		
 		Instance[][] insts = new Instance[this._numThreads][];
 
@@ -167,7 +167,7 @@ public abstract class NetworkModel implements Serializable{
 				Instance inst = insts_list.get(threadId).get(i);
 				insts[threadId][i] = inst;
 			}
-			print("Thread "+threadId+" has "+insts[threadId].length+" instances.", outstreams);
+//			print("Thread "+threadId+" has "+insts[threadId].length+" instances.", outstreams);
 		}
 		
 		return insts;
@@ -693,7 +693,7 @@ public abstract class NetworkModel implements Serializable{
 //		}
 		
 		this._numThreads = NetworkConfig.NUM_THREADS;
-		System.err.println("#threads:"+this._numThreads);
+//		System.err.println("#threads:"+this._numThreads);
 		
 		Instance[] results = new Instance[instances.length];
 		
@@ -746,9 +746,9 @@ public abstract class NetworkModel implements Serializable{
 			}
 		}
 		
-		System.err.println("Okay. Decoding started.");
+//		System.err.println("Okay. Decoding started.");
 		
-		long time = System.nanoTime();
+//		long time = System.nanoTime();
 		
 		if (NetworkConfig.USE_NEURAL_FEATURES) {
 			//initialize the neural decoder.
@@ -775,9 +775,9 @@ public abstract class NetworkModel implements Serializable{
 		}
 		printUsedMemory("after decode");
 		
-		System.err.println("Okay. Decoding done.");
-		time = System.nanoTime() - time;
-		System.err.println("Overall decoding time = "+ time/1.0e9 +" secs.");
+//		System.err.println("Okay. Decoding done.");
+//		time = System.nanoTime() - time;
+//		System.err.println("Overall decoding time = "+ time/1.0e9 +" secs.");
 		int k = 0;
 		for(int threadId = 0; threadId<this._numThreads; threadId++){
 			Instance[] outputs = this._decoders[threadId].getOutputs();

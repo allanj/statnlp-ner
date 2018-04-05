@@ -11,9 +11,10 @@ import org.statnlp.commons.types.WordToken;
 
 public class EReader {
 
+	public List<String> labels;
 	
-	public static EInst[] readData(String path, boolean setLabel, int number) throws IOException{
-		return readData(path, setLabel, number, "IOB");
+	public EReader(List<String> labels) {
+		this.labels = labels;
 	}
 	
 	/**
@@ -25,129 +26,53 @@ public class EReader {
 	 * @return
 	 * @throws IOException
 	 */
-	public static EInst[] readData(String path, boolean setLabel, int number, String encoding) throws IOException{
+	public EInst[] readData(String path, boolean isTraining, int number) throws IOException{
 		BufferedReader br = RAWF.reader(path);
 		String line = null;
 		List<EInst> insts = new ArrayList<EInst>();
 		int index =1;
-		ArrayList<WordToken> words = new ArrayList<WordToken>();
-		ArrayList<String> es = new ArrayList<String>();
-		String prevLine = null;
-		String prevEntity = "O";
-		Entity.get("O");
+		List<WordToken> words = new ArrayList<WordToken>();
+		ArrayList<String> output = new ArrayList<String>();
 		while((line = br.readLine())!=null){
-			if(line.startsWith("-DOCSTART-")) { prevLine = "-DOCSTART-"; continue;}
-			if(line.equals("") && !prevLine.equals("-DOCSTART-")){
+			if(line.equals("")){
 				WordToken[] wordsArr = new WordToken[words.size()];
 				words.toArray(wordsArr);
 				Sentence sent = new Sentence(wordsArr);
-				EInst inst = new EInst(index++,1.0,sent);
-				inst.output = es;
-//				System.err.println(es.toString());
-				if(!encoding.equals("NONE")) setEncoding(inst, encoding);
-//				System.err.println(inst.entities.toString());
-				if(setLabel) inst.setLabeled(); else inst.setUnlabeled();
+				//postprocess 
+				for (int i = 0; i < output.size(); i++) {
+					String currEnt = output.get(i);
+					if (i == output.size() - 1) {
+						if (currEnt.startsWith(EConf.B_)) output.set(i, EConf.S_ + currEnt.substring(2));
+						else if (currEnt.startsWith(EConf.I_)) output.set(i, EConf.E_ + currEnt.substring(2));
+					} else {
+						String nextEnt = output.get(i + 1);
+						if (currEnt.startsWith(EConf.B_)) {
+							if (nextEnt.equals(EConf.O) || nextEnt.startsWith(EConf.B_)) output.set(i, EConf.S_ + currEnt.substring(2));
+						} else if (currEnt.startsWith(EConf.I_)) {
+							if (nextEnt.equals(EConf.O) || nextEnt.startsWith(EConf.B_)) output.set(i, EConf.E_ + currEnt.substring(2));
+						}
+					}
+					if (!this.labels.contains(output.get(i))) {
+						this.labels.add(output.get(i));
+					}
+				}
+				EInst inst = new EInst(index++, 1.0, sent, output);
+				if(isTraining) inst.setLabeled(); else inst.setUnlabeled();
 				insts.add(inst);
 				words = new ArrayList<WordToken>();
-				es = new ArrayList<String>();
-				prevLine = "";
-				prevEntity = "O";
+				output = new ArrayList<String>();
 				if(number!=-1 && insts.size()==number) break;
 				continue;
+			} else {
+				String[] values = line.split(" ");
+				String entity = values[2];
+				output.add(entity);
+				words.add(new WordToken(values[0],values[1], -1));
 			}
-			if(line.equals("") && prevLine.equals("-DOCSTART-")){
-				prevLine = ""; prevEntity = "O"; continue;
-			}
-			String[] values = line.split(" ");
-			String rawCurrEntity = values[3];
-
-			String currEntity = null;
-			if(!encoding.equals("NONE")){
-				if(rawCurrEntity.equals("O")) currEntity = "O";
-				else{
-					if(prevEntity.equals("O")) currEntity = "B-"+rawCurrEntity.substring(2);
-					else if(prevEntity.substring(2).equals(rawCurrEntity.substring(2))){
-						if(prevEntity.equals(rawCurrEntity)){
-							currEntity = prevEntity;
-						}else{
-							assert !prevEntity.equals("O");
-							if(prevEntity.startsWith("B-")) currEntity = "I-"+rawCurrEntity.substring(2);
-							else currEntity = "B-"+rawCurrEntity.substring(2);
-						}
-						
-					}else{
-						currEntity = "B-"+rawCurrEntity.substring(2);
-					}
-				}
-			}else
-				currEntity = rawCurrEntity;
-			words.add(new WordToken(values[0],values[1],-1, currEntity));
-			es.add(currEntity);
-			prevLine = line;
-			prevEntity = currEntity;
 		}
 		br.close();
-		List<EInst> myInsts = insts;
-		String type = setLabel? "Training":"Testing";
-		System.err.println(type+" instance, total:"+ myInsts.size()+" Instance. ");
-		return myInsts.toArray(new EInst[myInsts.size()]);
+		System.err.println("[Info] total:"+ insts.size()+" Instance. ");
+		return insts.toArray(new EInst[insts.size()]);
 	}
 
-	private static void setEncoding(EInst inst, String encoding){
-		String prevEntity = "O";
-		if(encoding.equals("IOBES")){
-			ArrayList<String> output = inst.getOutput();
-			Sentence sent = inst.getInput();
-			for(int pos=0; pos<inst.size(); pos++){
-				String currEntity = output.get(pos);
-				String nextEntity = pos<inst.size()-1? output.get(pos+1):"O";
-				
-				String newCurrEntity = currEntity;
-				if(prevEntity.equals("O")){
-					if(!currEntity.equals("O")) {
-						if(nextEntity.startsWith("I-") && nextEntity.substring(2).equals(currEntity.substring(2))) newCurrEntity="B-"+currEntity.substring(2);
-						else newCurrEntity = "S-"+currEntity.substring(2);
-					}
-				}else if(!currEntity.equals("O")){
-					//previous Entity is not O. is something. and the current is not O
-					if(prevEntity.substring(2).equals(currEntity.substring(2))){
-						if(prevEntity.startsWith("E-") || prevEntity.startsWith("S-")){
-							if(nextEntity.startsWith("I-") && nextEntity.substring(2).equals(currEntity.substring(2))) newCurrEntity = "B-"+currEntity.substring(2);
-							else newCurrEntity = "S-"+currEntity.substring(2);
-						}else if(prevEntity.startsWith("I-")){
-							if(currEntity.startsWith("I-")){
-								if(nextEntity.length()>2 && nextEntity.substring(2).equals(currEntity.substring(2)) && nextEntity.startsWith("I-")){
-									newCurrEntity = currEntity;
-								}else newCurrEntity = "E-"+currEntity.substring(2);
-							}else {
-								assert currEntity.equals("O");
-								newCurrEntity = currEntity; //this one should be only O. check
-							}
-						}else if(prevEntity.startsWith("B-")){
-							assert currEntity.startsWith("I-"); //can only be I-
-							if(nextEntity.equals(currEntity)){
-								newCurrEntity = currEntity;
-							}else{
-								newCurrEntity = "E-"+currEntity.substring(2);
-							}
-							
-						}
-					}else{
-						//prev not o, current not o, and they are not equal. must be B- or S-
-						if(!nextEntity.startsWith("I-") || !nextEntity.substring(2).equals(currEntity.substring(2))) newCurrEntity = "S-"+currEntity.substring(2);
-						else  newCurrEntity = "B-"+currEntity.substring(2);
-					}
-				}
-				
-				
-				output.set(pos, newCurrEntity); 
-				sent.get(pos).setEntity(newCurrEntity);
-				Entity.get(newCurrEntity);
-				prevEntity = newCurrEntity;
-			}
-		}else if(encoding.equals("IOB")){
-			//TODO: do nothing, since by default it's iob encoding.
-		}
-	}
- 	
 }

@@ -17,11 +17,10 @@ import org.statnlp.hypergraph.NetworkConfig;
 import org.statnlp.hypergraph.NetworkConfig.ModelType;
 import org.statnlp.hypergraph.NetworkModel;
 import org.statnlp.hypergraph.decoding.Metric;
-import org.statnlp.hypergraph.neural.BidirectionalLSTM;
 import org.statnlp.hypergraph.neural.GlobalNeuralNetworkParam;
 import org.statnlp.hypergraph.neural.NeuralNetworkCore;
 
-public class LinearNEMain {
+public class EMain {
 	
 	public static boolean DEBUG = false;
 
@@ -34,9 +33,9 @@ public class LinearNEMain {
 	public static double adagrad_learningRate = 0.1;
 	public static double l2 = 0.01;
 	
-	public static String trainFile = "data/conll2003/eng.train";
-	public static String devFile = "data/conll2003/eng.testa";
-	public static String testFile = "data/conll2003/eng.testb";
+	public static String trainFile = "data/conll2003/train.txt";
+	public static String devFile = "data/conll2003/dev.txt";
+	public static String testFile = "data/conll2003/test.txt";
 	public static String nerOut = "data/conll2003/output/ner_out.txt";
 	public static String tmpOut = "data/conll2003/output/tmp_out.txt";
 	public static boolean saveModel = false;
@@ -65,10 +64,11 @@ public class LinearNEMain {
 		EInst[] trainInstances = null;
 		EInst[] devInstances = null;
 		EInst[] testInstances = null;
+		List<String> labels = new ArrayList<>();
 		
-		
-		trainInstances = EReader.readData(trainFile, true, trainNumber, "IOBES");
-		devInstances = EReader.readData(devFile, false, devNumber, "IOB");
+		EReader reader = new EReader(labels);
+		trainInstances = reader.readData(trainFile, true, trainNumber);
+		devInstances = reader.readData(devFile, false, devNumber);
 		
 		NetworkConfig.CACHE_FEATURES_DURING_TRAINING = true;
 		NetworkConfig.L2_REGULARIZATION_CONSTANT = l2;
@@ -79,17 +79,6 @@ public class LinearNEMain {
 		NetworkConfig.PRINT_BATCH_OBJECTIVE = false;
 		
 		//In order to compare with neural architecture for named entity recognition
-		Entity.get("START_TAG");
-		Entity.get("END_TAG");
-		Entity[] labels = new Entity[Entity.Entities.size()];
-		labels[0] = Entity.get("START_TAG");
-		labels[labels.length - 1] = Entity.get("END_TAG");
-		int l = 1;
-		for (String ent : Entity.Entities.keySet()) {
-			if (ent.equals("START_TAG") || ent.equals("END_TAG")) continue;
-			labels[l] = Entity.get(ent);
-			l++;
-		}
 		if (DEBUG) {
 			NetworkConfig.RANDOM_INIT_WEIGHT = false;
 			NetworkConfig.FEATURE_INIT_WEIGHT = 0.1;
@@ -99,25 +88,15 @@ public class LinearNEMain {
 		if (!readModel) {
 			List<NeuralNetworkCore> nets = new ArrayList<NeuralNetworkCore>();
 			if(NetworkConfig.USE_NEURAL_FEATURES){
-				if (neuralType.equals("lstm")) {
-					int hiddenSize = 100;
-					String optimizer = nnOptimizer;
-					boolean bidirection = true;
-					nets.add(new BidirectionalLSTM(hiddenSize, bidirection, optimizer, 0.05, 5, labels.length - 2, gpuId, embedding)
-							.setModelFile(nnModelFile));
-				} else if (neuralType.equals("continuous")) {
-					nets.add(new ECRFContinuousFeatureValueProvider(2, labels.length - 2));
-				} else if (neuralType.equals("mlp")) {
-					nets.add(new ECRFMLP(labels.length - 2));
-				} else if (neuralType.equals("embedding_layer")) {
-					nets.add(new EmbeddingLayer(labels.length - 2));
-				} else {
-					throw new RuntimeException("Unknown neural type: " + neuralType);
-				}
+				int hiddenSize = 100;
+				String optimizer = nnOptimizer;
+				boolean bidirection = true;
+				nets.add(new LampleBiLSTM("SimpleBiLSTM", hiddenSize, bidirection, optimizer, 0.05, 5, labels.size(), gpuId, embedding, 5)
+						.setModelFile(nnModelFile));
 			} 
 			GlobalNetworkParam gnp = new GlobalNetworkParam(optimizer, new GlobalNeuralNetworkParam(nets));
-			ECRFFeatureManager fa = new ECRFFeatureManager(gnp, labels, neuralType, false, lowercase);
-			ECRFNetworkCompiler compiler = new ECRFNetworkCompiler(iobes, labels);
+			ECRFFeatureManager fa = new ECRFFeatureManager(gnp, lowercase);
+			ECRFNetworkCompiler compiler = new ECRFNetworkCompiler(labels);
 			model = DiscriminativeNetworkModel.create(fa, compiler);
 			Function<Instance[], Metric> evalFunc = new Function<Instance[], Metric>() {
 				@Override
@@ -139,14 +118,13 @@ public class LinearNEMain {
 			oos.close();
 		}
 		
-		
-		testInstances = EReader.readData(testFile, false, testNumber,"IOB");
+		testInstances = reader.readData(testFile, false, testNumber);
 		Instance[] predictions = model.decode(testInstances);
 		ECRFEval.evalNER(predictions, nerOut);
 	}
 	
 	public static void processArgs(String[] args){
-		if(args[0].equals("-h") || args[0].equals("help") || args[0].equals("-help") ){
+		if(args.length > 0 && ( args[0].equals("-h") || args[0].equals("help") || args[0].equals("-help")) ){
 			System.err.println("Linear-Chain CRF Version: Joint DEPENDENCY PARSING and Entity Recognition TASK: ");
 			System.err.println("\t usage: java -jar dpe.jar -trainNum -1 -testNum -1 -thread 5 -iter 100 -pipe true");
 			System.err.println("\t put numTrainInsts/numTestInsts = -1 if you want to use all the training/testing instances");
