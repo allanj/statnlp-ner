@@ -4,12 +4,8 @@ require 'rnn'
 stringx = require 'pl.stringx'
 
 include 'nn-crf-interface/neural_server/AbstractNeuralNetwork.lua'
-include 'nn-crf-interface/neural_server/MultiLayerPerceptron.lua'
-include 'nn-crf-interface/neural_server/BidirectionalLSTM.lua'
 include 'nn-crf-interface/neural_server/SimpleBiLSTM.lua'
-include 'nn-crf-interface/neural_server/TagBiLSTM.lua'
-include 'nn-crf-interface/neural_server/ContinuousFeature.lua'
-include 'nn-crf-interface/neural_server/EmbeddingLayer.lua'
+include 'nn-crf-interface/neural_server/SeqBRNNGRU.lua'
 include 'nn-crf-interface/neural_server/OneHot.lua'
 include 'nn-crf-interface/neural_server/Utils.lua'
 include 'nn-crf-interface/neural_server/optim/sgdgc.lua'
@@ -53,18 +49,8 @@ function initialize(javadata, ...)
         torch.manualSeed(SEED)
         if gpuid >= 0 then cutorch.manualSeed(SEED) end
         local networkClass = javadata:get("class")
-        if networkClass == "MultiLayerPerceptron" then
-            net = MultiLayerPerceptron(optimizeInTorch, gpuid)
-        elseif networkClass == "BidirectionalLSTM" then
-            net = BidirectionalLSTM(optimizeInTorch, gpuid)
-        elseif networkClass == "SimpleBiLSTM" then
+        if networkClass == "SimpleBiLSTM" then
             net = SimpleBiLSTM(optimizeInTorch, gpuid)
-        elseif networkClass == "TagBiLSTM" then
-            net = TagBiLSTM(optimizeInTorch, gpuid)
-        elseif networkClass == "ContinuousFeature" then
-            net = ContinuousFeature(optimizeInTorch, gpuid)
-        elseif networkClass == "EmbeddingLayer" then
-            net = EmbeddingLayer(optimizeInTorch, gpuid)
         else
             error("Unsupported network class " .. networkClass)
         end
@@ -100,6 +86,9 @@ end
 
 function save_model(prefix)
     local timer = torch.Timer()
+    if gpuid >= 0 then
+        net.params:copy(net.paramsDouble)
+    end
     torch.save(prefix, net)
     local time = timer:time().real
     print(string.format("Saving model took %.4fs", time))

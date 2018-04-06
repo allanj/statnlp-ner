@@ -1,5 +1,3 @@
-include 'LampleLSTM.lua'
---include 'GPUUtils.lua'
 local SimpleBiLSTM, parent = torch.class('SimpleBiLSTM', 'AbstractNeuralNetwork')
 
 function SimpleBiLSTM:__init(doOptimization, gpuid)
@@ -8,22 +6,48 @@ function SimpleBiLSTM:__init(doOptimization, gpuid)
     self.gpuid = gpuid
 end
 
+function SimpleBiLSTM:defineGlobalString()
+    self.padToken = "<PAD>"
+    self.unkToken = "<UNK>"
+    self.startToken = "<START>"
+    self.endToken = "<END>"
+    self.e1Start = "<e1>"
+    self.e1End = "</e1>"
+    self.e2Start = "<e2>"
+    self.e2End = "</e2>"
+end
+
+function SimpleBiLSTM:loadEmbObj()
+    local data = self.data
+    self.embeddingSize = data.embeddingSize
+    if data.embedding == 'google' then
+        self.embeddingObject = loadGoogleEmbObj()
+        self.embeddingSize = 300
+    elseif data.embedding == 'turian' then
+        self.embeddingObject = loadTurianEmbObj()
+        self.embeddingSize = 50
+    else
+        error('unknown embedding type: '.. data.embedding)
+    end
+end
+
 function SimpleBiLSTM:initialize(javadata, ...)
     self.data = {}
+    self:defineGlobalString()
     local data = self.data
     data.sentences = listToTable(javadata:get("nnInputs"))
-    data.hiddenSize = javadata:get("hiddenSize")
-    data.optimizer = javadata:get("optimizer")
-    data.learningRate = javadata:get("learningRate")
-    data.clipping = javadata:get("clipping")
+    data.embeddingSize = javadata:get("embeddingSize")
     self.numLabels = javadata:get("numLabels")
     data.embedding = javadata:get("embedding")
+    self.dropout = javadata:get("dropout")
+    self.fixEmbedding = javadata:get("fixEmbedding")
     local modelPath = javadata:get("nnModelFile")
     local isTraining = javadata:get("isTraining")
     data.isTraining = isTraining
 
     if isTraining then
-        self.x = self:prepare_input()
+        self:loadEmbObj()
+        self.x = self:prepare_input(isTraining)
         self.numSent = #data.sentences
     end
 
@@ -32,24 +56,16 @@ function SimpleBiLSTM:initialize(javadata, ...)
         self:createNetwork()
         print(self.net)
     end
+
     if self.net == nil then 
         self:load_model(modelPath)
     end
 
-
     if not isTraining then 
-        self.testInput = self:prepare_input()
+        self.testInput = self:prepare_input(isTraining)
     end
     self.output = torch.Tensor()
-    self.x1Tab = {}
-    self.x1 = torch.LongTensor()
-    self.x2Tab = {}
-    self.x2 = torch.LongTensor()
-    if self.gpuid >= 0 then
-        self.x1 = self.x1:cuda()
-        self.x2 = self.x2:cuda()
-    end
-    self.gradOutput = {}
+    self.gradOutput = torch.Tensor()
     local outputAndGradOutputPtr = {... }
     if #outputAndGradOutputPtr > 0 then
         self.outputPtr = torch.pushudata(outputAndGradOutputPtr[1], "torch.DoubleTensor")
@@ -58,68 +74,62 @@ function SimpleBiLSTM:initialize(javadata, ...)
     end
 end
 
+function SimpleBiLSTM:buildBiGRU(inputSize, outputSize, dropout, tanhGRU)
+    local bigru = nn.Sequential():add(nn.Transpose({1,2})):add(nn.SplitTable(1))
+    local fwdSeq = nn.Sequencer(nn.GRU(inputSize, outputSize, 9999, dropout):maskZero(1))
+    local bwdSeq = nn.Sequential():add(nn.ReverseTable())
+    bwdSeq:add(nn.Sequencer(nn.GRU(inputSize, outputSize, 9999, dropout):maskZero(1)))
+    bwdSeq:add(nn.ReverseTable())
+    local biconcat = nn.ConcatTable():add(fwdSeq):add(bwdSeq)
+    bigru:add(biconcat):add(nn.ZipTable()):add(nn.Sequencer(nn.JoinTable(1,1)))
+    local mapTable = nn.MapTable()
+    local combineSize
+    if tanhGRU then
+        local mapOp = nn.Sequential()
+        mapOp:add(nn.Linear(2 * outputSize, outputSize)):add(nn.Tanh())
+        mapOp:add(nn.Unsqueeze(1))
+        mapTable:add(mapOp)
+        combineSize = outputSize
+    else
+        mapTable:add(nn.Unsqueeze(1))
+        combineSize = 2 * outputSize
+    end
+    bigru:add(mapTable):add(nn.JoinTable(1)):add(nn.Transpose({1,2}))
+    return bigru
+end
+
 --The network is only created once is used.
 function SimpleBiLSTM:createNetwork()
     local data = self.data
     local hiddenSize = data.hiddenSize
-    local sharedLookupTable
-    if data.embedding ~= nil then
-        if data.embedding == 'glove' then
-            sharedLookupTable = loadGlove(self.idx2word, hiddenSize, true)
-        else -- unknown/no embedding, defaults to random init
-            print ("unknown embedding type, use random embedding..")
-            sharedLookupTable = nn.LookupTableMaskZero(self.vocabSize, hiddenSize)
-            sharedLookupTable.weight:uniform(-torch.sqrt(0.03), torch.sqrt(0.03))
-            print("lookup table parameter: ".. sharedLookupTable:getParameters():nElement())
-        end
-    else
-        print ("Not using any embedding, just use random embedding")
-        sharedLookupTable = nn.LookupTableMaskZero(self.vocabSize, hiddenSize)
-        sharedLookupTable.weight:uniform(-torch.sqrt(0.03), torch.sqrt(0.03))
+    local embeddingSize = self.embeddingSize
+    local layer2hiddenSize = data.layer2hiddenSize
+    local gruHiddenSize = self.gruHiddenSize
+    local sharedLookupTable = nn.LookupTableMaskZero(self.vocabSize, embeddingSize)
+    for i =1, self.vocabSize do
+        sharedLookupTable.weight[i+1]:copy(self.embeddingObject:word2vec(self.idx2word[i]))
+    end
+    self.lt = sharedLookupTable
+    print("Word Embedding layer: " .. self.lt.weight:size(1) .. " x " .. self.lt.weight:size(2))
+    if self.fixEmbedding then
+        self.lt.accGradParameters = function() end
+        self.lt.parameters = function() end
     end
 
-    -- forward rnn
-    local fwdLSTM = nn.FastLSTM(hiddenSize, hiddenSize):maskZero(1)
-    print("number of lstm parameters:"..fwdLSTM:getParameters():nElement())
-    local fwd = nn.Sequential()
-       :add(sharedLookupTable)
-       :add(fwdLSTM)
-
-    -- internally, rnn will be wrapped into a Recursor to make it an AbstractRecurrent instance.
-    local fwdSeq = nn.Sequencer(fwd)
-
-    -- backward rnn (will be applied in reverse order of input sequence)
-    local bwd, bwdSeq
-    bwd = nn.Sequential()
-           :add(sharedLookupTable:sharedClone())
-           :add(nn.FastLSTM(hiddenSize, hiddenSize):maskZero(1))
-           
-    bwdSeq = nn.Sequential()
-            :add(nn.Sequencer(bwd))
-            :add(nn.ReverseTable())
-
-    -- merges the output of one time-step of fwd and bwd rnns.
-    -- You could also try nn.AddTable(), nn.Identity(), etc.
-    local merge = nn.JoinTable(1, 1)
-    local mergeSeq = nn.Sequencer(merge)
-
-    -- Assume that two input sequences are given (original and reverse, both are right-padded).
-    -- Instead of ConcatTable, we use ParallelTable here.
-    local parallel = nn.ParallelTable()
-    parallel:add(fwdSeq)
-    parallel:add(bwdSeq)
+    local brnn = self:buildBiGRU(embeddingSize, embeddingSize, self.dropout, true)
     
-    local brnn = nn.Sequential()
-       :add(parallel)
-       :add(nn.ZipTable())
-       :add(mergeSeq)
-    local mergeHiddenSize = 2 * hiddenSize
-    local rnn = nn.Sequential()
-        :add(brnn) 
-        :add(nn.Sequencer(nn.MaskZero(nn.Linear(mergeHiddenSize, self.numLabels), 1))) 
-    if self.gpuid >= 0 then rnn:cuda() end
-    self.net = rnn
+    local net = nn.Sequential()
+    net:add(self.lt)
+    -- if self.embDropout > 0 then
+    --     net:add(nn.Dropout(self.embDropout)) --adding lookup table
+    -- end
+    net:add(brnn) -- go into brnn
+    self.net = net
+    if self.gpuid >= 0 then
+        self.net:cuda() 
+    end
 end
+
 
 function SimpleBiLSTM:obtainParams()
     --make sure we will not replace this variable
@@ -148,46 +158,34 @@ function SimpleBiLSTM:obtainParams()
     end
 end
 
-function SimpleBiLSTM:createOptimizer()
-    local data = self.data
-    -- set optimizer. If nil, optimization is done by caller.
-    print(string.format("Optimizer: %s", data.optimizer))
-    self.doOptimization = data.optimizer ~= nil and data.optimizer ~= 'none'
-    if self.doOptimization == true then
-        if data.optimizer == 'sgd_normal' then
-            self.optimizer = optim.sgd
-            self.optimState = {learningRate=data.learningRate}
-        elseif data.optimizer == 'adagrad' then
-            self.optimizer = optim.adagrad
-            self.optimState = {learningRate=data.learningRate}
-        elseif data.optimizer == 'adam' then
-            self.optimizer = optim.adam
-            self.optimState = {learningRate=data.learningRate}
-        elseif data.optimizer == 'adadelta' then
-            self.optimizer = optim.adadelta
-            self.optimState = {learningRate=data.learningRate}
-        elseif data.optimizer == 'lbfgs' then
-            self.optimizer = optim.lbfgs
-            self.optimState = {tolFun=10e-10, tolX=10e-16}
-        elseif data.optimizer == 'sgd' then
-            --- with gradient clipping
-            self.optimizer = sgdgc
-            self.optimState = {learningRate=data.learningRate, clipping=data.clipping}
-        end
-    end
-end
-
 function SimpleBiLSTM:forward(isTraining, batchInputIds)
-    if self.gpuid >= 0 and not self.doOptimization and isTraining then
+    if self.gpuid >= 0 and not self.doOptimization then
         self.params:copy(self.paramsDouble:cuda())
     end
+    if isTraining then
+        self.net:training()
+    else
+        self.net:evaluate()
+    end
     local nnInput = self:getForwardInput(isTraining, batchInputIds)
-    local output_table = self.net:forward(nnInput)
+    local lstmOutput
+    if isTraining then
+        lstmOutput = self.net:forward(nnInput)
+    else
+        lstmOutput = torch.Tensor()
+        if self.gpuid >=0 then lstmOutput = lstmOutput:cuda() end
+        local instSize = nnInput:size(1) --number of sentences 
+        local testBatchSize = 10   ---test batch size = 10
+        for i = 1, instSize, testBatchSize do
+            if i + testBatchSize - 1 > instSize then testBatchSize =  instSize - i + 1 end
+            local tmpOut = self.net:forward(nnInput:narrow(1, i, testBatchSize))
+            lstmOutput = torch.cat(lstmOutput, tmpOut, 1)
+        end
+    end
     if self.gpuid >= 0 then
-        nn.utils.recursiveType(output_table, 'torch.DoubleTensor')
+        lstmOutput = lstmOutput:double()
     end 
-    --- this is to converting the table into tensor.
-    self.output = torch.cat(self.output, output_table, 1)
+    self.output = lstmOutput
     if not self.outputPtr:isSameSizeAs(self.output) then
         self.outputPtr:resizeAs(self.output)
     end
@@ -199,14 +197,7 @@ function SimpleBiLSTM:getForwardInput(isTraining, batchInputIds)
         if batchInputIds ~= nil then
             batchInputIds:add(1) -- because the sentence is 0 indexed.
             self.batchInputIds = batchInputIds
-            self.x1 = torch.cat(self.x1, self.x[1], 2):index(1, batchInputIds)
-            self.x1 = self.x1:view(self.x1:size(2), self.x1:size(1)):view(-1)
-            torch.split(self.x1Tab, self.x1, batchInputIds:size(1), 1)
-            self.x2 = torch.cat(self.x2, self.x[2], 2):index(1, batchInputIds)
-            self.x2 = self.x2:resize(self.x2:size(2), self.x2:size(1)):view(-1)
-            torch.split(self.x2Tab, self.x2, batchInputIds:size(1), 1)
-
-            self.batchInput = {self.x1Tab, self.x2Tab}
+            self.batchInput = self.x:index(1, batchInputIds)
             return self.batchInput
         else
             return self.x
@@ -236,30 +227,26 @@ function SimpleBiLSTM:backward()
     self.gradParams:zero()
     local gradOutputTensor = self.gradOutputPtr
     local backwardInput = self:getBackwardInput()  --since backward only happen in training
-    local backwardSentNum = self:getBackwardSentNum()
-    torch.split(self.gradOutput, gradOutputTensor, backwardSentNum, 1)
+    self.gradOutput = gradOutputTensor
     if self.gpuid >= 0 then
-        nn.utils.recursiveType(self.gradOutput, 'torch.CudaTensor')
+        self.gradOutput = self.gradOutput:cuda()
     end
+    self.net:training()
     self.net:backward(backwardInput, self.gradOutput)
-    if self.doOptimization then
-        self.optimizer(self.feval, self.params, self.optimState)
-    else
-        if self.gpuid >= 0 then
-            self.gradParamsDouble:copy(self.gradParams:double())
-        end
+
+    if self.gpuid >= 0 then
+        self.gradParamsDouble:copy(self.gradParams:double())
     end
-    
 end
 
 function SimpleBiLSTM:prepare_input()
     local data = self.data
-
     local sentences = data.sentences
     local sentence_toks = {}
     local maxLen = 0
     for i=1,#sentences do
-        local tokens = stringx.split(sentences[i]," ")
+        local sentence = sentences[i]
+        local tokens = stringx.split(sentence," ")
         table.insert(sentence_toks, tokens)
         if #tokens > maxLen then
             maxLen = #tokens
@@ -269,74 +256,86 @@ function SimpleBiLSTM:prepare_input()
     --note that inside if the vocab is already created
     --just directly return
     self:buildVocab(sentences, sentence_toks)    
+    ---build tensor input
+    local inputs = torch.IntTensor(#sentences, maxLen)
+    self:fillInputs(#sentences, inputs, maxLen, sentence_toks)
+    if self.gpuid >= 0 then 
+        inputs = inputs:cuda()
+    end
+    print("number of sentences: "..#sentences)
+    print("max sentence length: "..maxLen)
+    return inputs
+end
 
-    local inputs = {}
-    local inputs_rev = {}
-    for step=1,maxLen do
-        inputs[step] = torch.LongTensor(#sentences)
-        for j=1,#sentences do
-            local tokens = sentence_toks[j]
+function SimpleBiLSTM:fillInputs(numSents, inputTensor, maxLen, toks)
+    for sId=1,numSents do
+        local tokens = toks[sId]
+        for step=1,maxLen do
             if step > #tokens then
-                inputs[step][j] = 0 --padding token
-            else
-                local tok = sentence_toks[j][step]
+                inputTensor[sId][step] = 0 ---padding token, always zero-padding
+            else 
+                local tok = tokens[step]
                 local tok_id = self.word2idx[tok]
                 if tok_id == nil then
-                    tok_id = self.word2idx['<UNK>']
+                    tok_id = self.word2idx[self.unkToken]
                 end
-                inputs[step][j] = tok_id
+                inputTensor[sId][step] = tok_id
             end
         end
-        if self.gpuid >= 0 then inputs[step] = inputs[step]:cuda() end
     end
-    print("max sentencen length:"..maxLen)
-    for step=1,maxLen do
-        inputs_rev[step] = torch.LongTensor(#sentences)
-        for j=1,#sentences do
-            local tokens = sentence_toks[j]
-            inputs_rev[step][j] = inputs[maxLen-step+1][j]
-        end
-        if self.gpuid >= 0 then inputs_rev[step] = inputs_rev[step]:cuda() end
-    end
-    self.maxLen = maxLen
-    return {inputs, inputs_rev}
 end
 
 function SimpleBiLSTM:buildVocab(sentences, sentence_toks)
     if self.idx2word ~= nil then
-        --means the vocabulary is already created
         return 
     end
+    local embeddingObject = self.embeddingObject
+    local embW2V = embeddingObject.w2vvocab
+
     self.idx2word = {}
     self.word2idx = {}
-    self.word2idx['<PAD>'] = 0
-    self.idx2word[0] = '<PAD>'
-    self.word2idx['<UNK>'] = 1
-    self.idx2word[1] = '<UNK>'
-    self.vocabSize = 2
-    for i=1,#sentences do
-        local tokens = sentence_toks[i]
-        for j=1,#tokens do
+    self.vocabSize = 0
+    self.vocabSize = self.vocabSize + 1
+    self.word2idx[self.unkToken] = self.vocabSize
+    self.idx2word[self.vocabSize] = self.unkToken
+    self.unkTokens = {}
+    self:buildVocabForTokens(sentences, sentence_toks, embW2V)
+    print("number of unique words (including unknown):".. self.vocabSize.." (unknown words are replaced by unk)")
+    print("number of unknown tokens (not unique): ".. countTable(self.unkTokens))
+end
+
+function SimpleBiLSTM:buildVocabForTokens(sentences, toks, embW2V)
+    for i = 1, #sentences do
+        local tokens = toks[i]
+        for j = 1, #tokens do 
             local tok = tokens[j]
-            local tok_id = self.word2idx[tok]
-            if tok_id == nil then
-                self.vocabSize = self.vocabSize+1
-                self.word2idx[tok] = self.vocabSize
-                self.idx2word[self.vocabSize] = tok
+            local tokInEmbId = embW2V[tok]
+            if tokInEmbId == nil and self.word2idx[tok] == nil then
+                ---not in the pretrained embedding, just use unk
+                self.word2idx[tok] = self.word2idx[self.unkToken]
+                if self.unkTokens[tok] == nil then
+                    self.unkTokens[tok] = 1 --dummy value
+                end
+            else
+                --in the pretraining embedding table
+                local tok_id = self.word2idx[tok]
+                if tok_id == nil then 
+                    self.vocabSize = self.vocabSize + 1
+                    self.word2idx[tok] = self.vocabSize
+                    self.idx2word[self.vocabSize] = tok
+                end
             end
         end
     end
-    print("number of unique words:" .. #self.idx2word)
 end
 
-function SimpleBiLSTM:save_model(path)
-    --need to save the vocabulary as well.
-    torch.save(path, {self.net, self.idx2word, self.word2idx})
+function printTable(table)
+    for a,b in pairs(table) do print(a,b) end
 end
 
-function SimpleBiLSTM:load_model(path)
-    local object = torch.load(path)
-    self.net = object[1]
-    self.idx2word = object[2]
-    self.word2idx = object[3]
+function countTable(table)
+    local count = 0
+    for _ in pairs(table) do count = count + 1 end
+    return count
 end
+

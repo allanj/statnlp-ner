@@ -125,3 +125,42 @@ function loadPolyglot(wordList, lang)
     end
     return ltw
 end
+
+function loadTurianEmbObj()
+    local turianFile = '/Users/allanjie/allan/data/turian_embeddings_normalized.50.t7'
+    --local TurianFile = 'nn-crf-interface/neural_server/goolge/TurianNews-vectors-negative300.bin.t7'
+    if not paths.filep(turianFile) then
+        error('Please run bintot7.lua to preprocess Turian data!')
+    else
+        turian = torch.load(turianFile)
+        print('Done reading Turian data.')
+    end
+    turian.unkToken = "*UNKNOWN*"
+    turian.word2vec = function (self,word)
+        local ind = self.w2vvocab[word] 
+        if ind == nil then
+            ind = self.w2vvocab['*UNKNOWN*']
+        end
+        return self.M[ind]
+    end
+    return turian
+end
+
+function loadGoogleEmbObj()
+    local GoogleFile = 'nn-crf-interface/neural_server/google/GoogleNews-vectors-negative300.bin.t7'
+    if not paths.filep(GoogleFile) then
+        error('Please run bintot7.lua to preprocess Google data!')
+    else
+        google = torch.load(GoogleFile)
+        print('Done reading Google data.')
+    end
+    google.unkToken = "</s>"
+    google.word2vec = function (self,word)
+        local ind = self.w2vvocab[word] 
+        if ind == nil then
+            ind = self.w2vvocab[self.unkToken]
+        end
+        return self.M[ind]
+    end
+    return google
+end

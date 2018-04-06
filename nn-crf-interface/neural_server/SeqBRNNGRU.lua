@@ -9,13 +9,15 @@
 -- For each step, the outputs of both rnn are merged together using
 -- the merge module (defaults to nn.CAddTable() which sums the activations).
 ------------------------------------------------------------------------
-local SeqBRNN, parent = torch.class('nn.SeqBRNN', 'nn.Container')
+local SeqBRNNGRU, parent = torch.class('nn.SeqBRNNGRU', 'nn.Container')
 
-function SeqBRNN:__init(inputDim, hiddenDim)
-    self.forwardModule = nn.SeqLSTM(inputDim, hiddenDim)
-    self.backwardModule = nn.SeqLSTM(inputDim, hiddenDim)
-    self.merge = nn.Sequencer(nn.JoinTable(1, 1))
-    
+function SeqBRNNGRU:__init(inputDim, hiddenDim, batchFirst, merge)
+    self.forwardModule = nn.SeqGRU(inputDim, hiddenDim)
+    self.backwardModule = nn.SeqGRU(inputDim, hiddenDim)
+    self.merge = merge
+    if not self.merge then
+        self.merge = nn.CAddTable()
+    end
     self.dim = 1
     local backward = nn.Sequential()
     backward:add(nn.SeqReverseSequence(self.dim)) -- reverse
@@ -27,8 +29,12 @@ function SeqBRNN:__init(inputDim, hiddenDim)
 
     local brnn = nn.Sequential()
     brnn:add(concat)
-    brnn:add(nn.ZipTable())
     brnn:add(self.merge)
+    if(batchFirst) then
+        -- Insert transposes before and after the brnn.
+        brnn:insert(nn.Transpose({1, 2}), 1)
+        brnn:insert(nn.Transpose({1, 2}))
+    end
 
     parent.__init(self)
 
@@ -40,29 +46,29 @@ function SeqBRNN:__init(inputDim, hiddenDim)
     self.modules[1] = brnn
 end
 
-function SeqBRNN:updateOutput(input)
+function SeqBRNNGRU:updateOutput(input)
     self.output = self.module:updateOutput(input)
     return self.output
 end
 
-function SeqBRNN:updateGradInput(input, gradOutput)
+function SeqBRNNGRU:updateGradInput(input, gradOutput)
     self.gradInput = self.module:updateGradInput(input, gradOutput)
     return self.gradInput
 end
 
-function SeqBRNN:accGradParameters(input, gradOutput, scale)
+function SeqBRNNGRU:accGradParameters(input, gradOutput, scale)
     self.module:accGradParameters(input, gradOutput, scale)
 end
 
-function SeqBRNN:accUpdateGradParameters(input, gradOutput, lr)
+function SeqBRNNGRU:accUpdateGradParameters(input, gradOutput, lr)
     self.module:accUpdateGradParameters(input, gradOutput, lr)
 end
 
-function SeqBRNN:sharedAccUpdateGradParameters(input, gradOutput, lr)
+function SeqBRNNGRU:sharedAccUpdateGradParameters(input, gradOutput, lr)
     self.module:sharedAccUpdateGradParameters(input, gradOutput, lr)
 end
 
-function SeqBRNN:__tostring__()
+function SeqBRNNGRU:__tostring__()
     if self.module.__tostring__ then
         return torch.type(self) .. ' @ ' .. self.module:__tostring__()
     else

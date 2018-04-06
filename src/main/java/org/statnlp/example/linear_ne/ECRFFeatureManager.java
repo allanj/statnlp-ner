@@ -61,7 +61,7 @@ public class ECRFFeatureManager extends FeatureManager {
 			Object input = null;
 			String sentenceInput = this.lowercase ? sent.toString().toLowerCase() : sent.toString();
 			input = new SimpleImmutableEntry<String, Integer>(sentenceInput, pos);
-			this.addNeural(network, 0, parent_k, children_k_index, input, eId - 1);
+			this.addNeural(network, 0, parent_k, children_k_index, input, eId);
 		} else {
 			featureList.add(this._param_g.toFeature(network,FeaType.word.name(), entity, word));
 		}

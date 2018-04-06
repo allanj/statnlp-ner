@@ -244,17 +244,17 @@ public class LocalNetworkDecoderThread extends Thread{
      * and caching the networks if {@link #_cacheNetworks} is true.
      */
 	public void touch(){
-		long time = System.currentTimeMillis();
+//		long time = System.currentTimeMillis();
 		//extract the features..
 		for(int networkId = 0; networkId< this._instances_input.length; networkId++){
-			if(networkId%100==0)
-				System.err.print('.');
+//			if(networkId%100==0)
+//				System.err.print('.');
 			Network network = this._compiler.compileAndStore(networkId, this._instances_input[networkId], this._param);
 			network.touch();
 		}
-		System.err.println();
-		time = System.currentTimeMillis() - time;
-		System.out.println("Thread "+this._threadId + " touch time: "+ time/1000.0+" secs.");
+//		System.err.println();
+//		time = System.currentTimeMillis() - time;
+//		System.out.println("Thread "+this._threadId + " touch time: "+ time/1000.0+" secs.");
 	}
 	
 	public void setTouch(){

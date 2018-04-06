@@ -46,7 +46,7 @@ public class EMain {
 	public static boolean iobes = false;
 	public static int gpuId = -1;
 	public static String nnOptimizer = "lbfgs";
-	public static String embedding = "random";
+	public static String embedding = "turian";
 	public static int batchSize = 10;
 	public static OptimizerFactory optimizer = OptimizerFactory.getLBFGSFactory();
 	public static boolean evalOnDev = false;
@@ -68,6 +68,7 @@ public class EMain {
 		
 		EReader reader = new EReader(labels);
 		trainInstances = reader.readData(trainFile, true, trainNumber);
+		System.out.println("[Info] labels:" + labels.toString());
 		devInstances = reader.readData(devFile, false, devNumber);
 		
 		NetworkConfig.CACHE_FEATURES_DURING_TRAINING = true;
@@ -75,8 +76,9 @@ public class EMain {
 		NetworkConfig.NUM_THREADS = numThreads;
 		NetworkConfig.PARALLEL_FEATURE_EXTRACTION = true;
 		NetworkConfig.BATCH_SIZE = batchSize; //need to enable batch training first
-		NetworkConfig.RANDOM_BATCH = false;
+		NetworkConfig.RANDOM_BATCH = true;
 		NetworkConfig.PRINT_BATCH_OBJECTIVE = false;
+		NetworkConfig.FEATURE_TOUCH_TEST = true;
 		
 		//In order to compare with neural architecture for named entity recognition
 		if (DEBUG) {
@@ -125,7 +127,7 @@ public class EMain {
 	
 	public static void processArgs(String[] args){
 		if(args.length > 0 && ( args[0].equals("-h") || args[0].equals("help") || args[0].equals("-help")) ){
-			System.err.println("Linear-Chain CRF Version: Joint DEPENDENCY PARSING and Entity Recognition TASK: ");
+			System.err.println("Neural Architecture for Named Entity Recognition ");
 			System.err.println("\t usage: java -jar dpe.jar -trainNum -1 -testNum -1 -thread 5 -iter 100 -pipe true");
 			System.err.println("\t put numTrainInsts/numTestInsts = -1 if you want to use all the training/testing instances");
 			System.exit(0);
@@ -147,7 +149,7 @@ public class EMain {
 											NetworkConfig.USE_NEURAL_FEATURES = true;
 											neuralType = args[i+1]; //by default optim_neural is false.
 											NetworkConfig.IS_INDEXED_NEURAL_FEATURES = false; //only used when using the senna embedding.
-											NetworkConfig.REGULARIZE_NEURAL_FEATURES = true;
+											NetworkConfig.REGULARIZE_NEURAL_FEATURES = false;
 									}
 									break;
 					case "-iobes":  iobes = args[i+1].equals("true") ? true : false; break;
@@ -171,8 +173,6 @@ public class EMain {
 					case "-gpuid": gpuId = Integer.valueOf(args[i+1]); break;
 					case "-reg": l2 = Double.valueOf(args[i+1]);  break;
 					case "-lr": adagrad_learningRate = Double.valueOf(args[i+1]); break;
-					case "-backend": NetworkConfig.NEURAL_BACKEND = args[i+1]; break;
-					case "-os": NetworkConfig.OS = args[i+1]; break; // for Lua native lib, "osx" or "linux"
 					case "-evalDev": evalOnDev = args[i+1].equals("true") ? true : false; 
 						if (evalOnDev) {
 							evalFreq = Integer.valueOf(args[i+2]);

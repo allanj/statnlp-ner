@@ -5,7 +5,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.lang.ProcessBuilder.Redirect;
 import java.util.List;
 
 import org.statnlp.commons.io.RAWF;
@@ -61,8 +60,8 @@ public class ECRFEval {
 				pb = new ProcessBuilder(evalScript); 
 			}
 			pb.redirectInput(new File(outputFile));
-			pb.redirectOutput(Redirect.INHERIT);
-			pb.redirectError(Redirect.INHERIT);
+//			pb.redirectOutput(Redirect.INHERIT);
+//			pb.redirectError(Redirect.INHERIT);
 			Process process = pb.start();
 			BufferedReader br = new BufferedReader(new InputStreamReader(process.getInputStream(), "UTF-8")) ;
 			while (!br.ready()) ; // wait until buffered reader is ready.
