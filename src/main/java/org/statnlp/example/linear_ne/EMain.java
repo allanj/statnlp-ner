@@ -14,11 +14,15 @@ import org.statnlp.commons.types.Instance;
 import org.statnlp.hypergraph.DiscriminativeNetworkModel;
 import org.statnlp.hypergraph.GlobalNetworkParam;
 import org.statnlp.hypergraph.NetworkConfig;
-import org.statnlp.hypergraph.NetworkConfig.ModelType;
 import org.statnlp.hypergraph.NetworkModel;
 import org.statnlp.hypergraph.decoding.Metric;
 import org.statnlp.hypergraph.neural.GlobalNeuralNetworkParam;
 import org.statnlp.hypergraph.neural.NeuralNetworkCore;
+
+import net.sourceforge.argparse4j.ArgumentParsers;
+import net.sourceforge.argparse4j.inf.ArgumentParser;
+import net.sourceforge.argparse4j.inf.ArgumentParserException;
+import net.sourceforge.argparse4j.inf.Namespace;
 
 public class EMain {
 	
@@ -29,9 +33,7 @@ public class EMain {
 	public static int testNumber = -100;
 	public static int numIteration = 100;
 	public static int numThreads = 5;
-	public static String MODEL = "ssvm";
-	public static double adagrad_learningRate = 0.1;
-	public static double l2 = 0.01;
+	public static double l2 = 0;
 	
 	public static String trainFile = "data/conll2003/train.txt";
 	public static String devFile = "data/conll2003/dev.txt";
@@ -43,7 +45,6 @@ public class EMain {
 	public static String modelFile = "models/linearNE.m";
 	public static String nnModelFile = "models/lstm.m";
 	public static String neuralType = "lstm";
-	public static boolean iobes = false;
 	public static int gpuId = -1;
 	public static String nnOptimizer = "lbfgs";
 	public static String embedding = "turian";
@@ -59,7 +60,6 @@ public class EMain {
 		System.err.println("[Info] trainingFile: "+trainFile);
 		System.err.println("[Info] testFile: "+testFile);
 		System.err.println("[Info] nerOut: "+nerOut);
-		System.err.println("[Info] use IOBES constraint to build network: "+iobes);
 		
 		EInst[] trainInstances = null;
 		EInst[] devInstances = null;
@@ -74,7 +74,6 @@ public class EMain {
 		NetworkConfig.CACHE_FEATURES_DURING_TRAINING = true;
 		NetworkConfig.L2_REGULARIZATION_CONSTANT = l2;
 		NetworkConfig.NUM_THREADS = numThreads;
-		NetworkConfig.PARALLEL_FEATURE_EXTRACTION = true;
 		NetworkConfig.BATCH_SIZE = batchSize; //need to enable batch training first
 		NetworkConfig.RANDOM_BATCH = true;
 		NetworkConfig.PRINT_BATCH_OBJECTIVE = false;
@@ -126,67 +125,59 @@ public class EMain {
 	}
 	
 	public static void processArgs(String[] args){
-		if(args.length > 0 && ( args[0].equals("-h") || args[0].equals("help") || args[0].equals("-help")) ){
-			System.err.println("Neural Architecture for Named Entity Recognition ");
-			System.err.println("\t usage: java -jar dpe.jar -trainNum -1 -testNum -1 -thread 5 -iter 100 -pipe true");
-			System.err.println("\t put numTrainInsts/numTestInsts = -1 if you want to use all the training/testing instances");
-			System.exit(0);
-		}else{
-			for(int i=0;i<args.length;i=i+2){
-				switch(args[i]){
-					case "-trainNum": trainNumber = Integer.valueOf(args[i+1]); break;   //default: all 
-					case "-testNum": testNumber = Integer.valueOf(args[i+1]); break;    //default:all
-					case "-devNum": devNumber = Integer.valueOf(args[i+1]); break;    //default:all
-					case "-iter": numIteration = Integer.valueOf(args[i+1]); break;   //default:100;
-					case "-thread": numThreads = Integer.valueOf(args[i+1]); break;   //default:5
-					case "-testFile": testFile = args[i+1]; break;        
-					case "-windows":ECRFEval.windows = true; break;            //default: false (is using windows system to run the evaluation script)
-					case "-batch": NetworkConfig.USE_BATCH_TRAINING = true;
-									batchSize = Integer.valueOf(args[i+1]); break;
-					case "-model": NetworkConfig.MODEL_TYPE = args[i+1].equals("crf")? ModelType.CRF:ModelType.SSVM;   break;
-					case "-neural": if(args[i+1].equals("mlp") || args[i+1].equals("lstm")|| args[i+1].equals("continuous")
-							|| args[i+1].equals("embedding_layer")){ 
-											NetworkConfig.USE_NEURAL_FEATURES = true;
-											neuralType = args[i+1]; //by default optim_neural is false.
-											NetworkConfig.IS_INDEXED_NEURAL_FEATURES = false; //only used when using the senna embedding.
-											NetworkConfig.REGULARIZE_NEURAL_FEATURES = false;
-									}
-									break;
-					case "-iobes":  iobes = args[i+1].equals("true") ? true : false; break;
-					case "-lowercase":  lowercase = args[i+1].equals("true") ? true : false; break;
-					case "-initNNweight": 
-						NetworkConfig.INIT_FV_WEIGHTS = args[i+1].equals("true") ? true : false; //optimize the neural features or not
-						break;
-					case "-optimNeural": 
-						NetworkConfig.OPTIMIZE_NEURAL = args[i+1].equals("true") ? true : false; //optimize the neural features or not
-						if (!NetworkConfig.OPTIMIZE_NEURAL) {
-							nnOptimizer = args[i+2];
-							i++;
-						}break;
-					case "-optimizer":
-						 if(args[i+1].equals("sgd")) {
-							 System.out.println("[Info] Using SGD with gradient clipping, take best parameter on development set.");
-							 optimizer = OptimizerFactory.getGradientDescentFactoryUsingGradientClipping(BestParamCriteria.BEST_ON_DEV, 0.05, 5);
-						 }
-						break;
-					case "-emb" : embedding = args[i+1]; break;
-					case "-gpuid": gpuId = Integer.valueOf(args[i+1]); break;
-					case "-reg": l2 = Double.valueOf(args[i+1]);  break;
-					case "-lr": adagrad_learningRate = Double.valueOf(args[i+1]); break;
-					case "-evalDev": evalOnDev = args[i+1].equals("true") ? true : false; 
-						if (evalOnDev) {
-							evalFreq = Integer.valueOf(args[i+2]);
-							i++;
-						}
-						break;
-					default: System.err.println("Invalid arguments "+args[i]+", please check usage."); System.exit(0);
-				}
-			}
-			System.err.println("[Info] trainNum: "+trainNumber);
-			System.err.println("[Info] testNum: "+testNumber);
-			System.err.println("[Info] numIter: "+numIteration);
-			System.err.println("[Info] numThreads: "+numThreads);
-			System.err.println("[Info] Regularization Parameter: "+l2);
-		}
+		ArgumentParser parser = ArgumentParsers.newArgumentParser("")
+				.defaultHelp(true).description("Latent Linear-chain CRGs");
+		parser.addArgument("-t", "--thread").type(Integer.class).setDefault(numThreads).help("number of threads");
+		parser.addArgument("--train_num").type(Integer.class).setDefault(trainNumber).help("number of training data");
+		parser.addArgument("--dev_num").type(Integer.class).setDefault(devNumber).help("number of validation data");
+		parser.addArgument("--test_num").type(Integer.class).setDefault(testNumber).help("number of test data");
+		parser.addArgument("-it", "--iter").type(Integer.class).setDefault(numIteration).help("number of iterations");
+		parser.addArgument("-w", "--windows").type(Boolean.class).setDefault(ECRFEval.windows).help("windows system for running eval script");
+		parser.addArgument("-b", "--batch").nargs("*").setDefault(new Object[] {NetworkConfig.USE_BATCH_TRAINING, batchSize}).help("batch training configuration");
+		parser.addArgument("-lc", "--lowercase").type(Boolean.class).setDefault(lowercase).help("use lowercase in lstm or not");
+		parser.addArgument("-optim", "--optimizer").type(String.class).choices("lbfgs", "sgdclip", "adam").setDefault("lbfgs").help("optimizer");
+		parser.addArgument("-emb", "--embedding").type(String.class).choices("glove", "google", "random", "turian").setDefault(embedding).help("embedding to use");
+		parser.addArgument("-gi", "--gpuid").type(Integer.class).setDefault(gpuId).help("gpuid");
+		parser.addArgument("-l2", "--l2val").type(Double.class).setDefault(l2).help("L2 regularization term");
+		parser.addArgument("-ed", "--evalDev").nargs("*").setDefault(new Object[] {evalOnDev, evalFreq}).help("evaluate on dev set");
+		parser.addArgument("-lstm", "--useLSTM").type(Boolean.class).setDefault(NetworkConfig.USE_NEURAL_FEATURES).help("use lstm features");
+		parser.addArgument("--saveModel", "-sm").type(Boolean.class).setDefault(saveModel).help("save model");
+		parser.addArgument("--readModel", "-rm").type(Boolean.class).setDefault(readModel).help("read model");
+		Namespace ns = null;
+        try {
+            ns = parser.parseArgs(args);
+        } catch (ArgumentParserException e) {
+            parser.handleError(e);
+            System.exit(1);
+        }
+        numThreads = ns.getInt("thread");
+        trainNumber = ns.getInt("train_num");
+        devNumber = ns.getInt("dev_num");
+        testNumber = ns.getInt("test_num");
+        numIteration = ns.getInt("iter");
+        ECRFEval.windows = ns.getBoolean("windows");
+        List<Object> batchOps = ns.getList("batch");
+        NetworkConfig.USE_BATCH_TRAINING = (boolean)batchOps.get(0);
+        batchSize = (int)batchOps.get(1);
+        lowercase = ns.getBoolean("lowercase");
+        String optim = ns.getString("optimizer");
+        switch (optim) {
+        	case "lbfgs": optimizer = OptimizerFactory.getLBFGSFactory(); break;
+        	case "sgdclip": optimizer = OptimizerFactory.getGradientDescentFactoryUsingGradientClipping(BestParamCriteria.BEST_ON_DEV, 0.05, 5);
+        	case "adam" : optimizer = OptimizerFactory.getGradientDescentFactoryUsingAdaM(BestParamCriteria.BEST_ON_DEV);
+        	default: optimizer = OptimizerFactory.getLBFGSFactory(); break;
+        }
+        embedding = ns.getString("embedding");
+        gpuId = ns.getInt("gpuid");
+        l2 = ns.getDouble("l2val");
+        List<Object> evalDevOps = ns.getList("evalDev");
+        evalOnDev = (boolean)evalDevOps.get(0);
+        evalFreq = (int)evalDevOps.get(1);
+        NetworkConfig.USE_NEURAL_FEATURES = ns.getBoolean("useLSTM");
+        saveModel = ns.getBoolean("saveModel");
+        readModel = ns.getBoolean("readModel");
+        for (String key : ns.getAttrs().keySet()) {
+        	System.err.println(key + "=" + ns.get(key));
+        }
 	}
 }
