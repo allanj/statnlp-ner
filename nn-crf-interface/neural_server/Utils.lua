@@ -146,6 +146,7 @@ function loadTurianEmbObj()
     return turian
 end
 
+
 function loadGoogleEmbObj()
     local GoogleFile = 'nn-crf-interface/neural_server/google/GoogleNews-vectors-negative300.bin.t7'
     if not paths.filep(GoogleFile) then
@@ -163,4 +164,23 @@ function loadGoogleEmbObj()
         return self.M[ind]
     end
     return google
+end
+
+function loadGloveEmbObj()
+    local gloveFile = 'nn-crf-interface/neural_server/glove_torch/glove.6B.100d.t7'
+    if not paths.filep(gloveFile) then
+        error('Please run bintot7.lua to preprocess Glove data!')
+    else
+        glove = torch.load(gloveFile)
+        print('Done reading GloVe data.')
+    end
+    glove.unkToken = "unk"
+    glove.word2vec = function ( self, word )
+        local ind = self.w2vvocab[word] 
+        if ind == nil then
+            ind = self.w2vvocab[self.unkToken]
+        end
+        return self.M[ind]
+    end
+    return glove
 end

@@ -1,7 +1,7 @@
 local opt = {}
 wd='./'
-opt.binfilename = wd .. 'glove.6B.100d.txt'
-opt.outfilename = wd .. 'glove.6B.100d.t7'
+opt.binfilename = wd .. 'glove.6B.50d.txt'
+opt.outfilename = wd .. 'glove.6B.50d.t7'
 
 --Reading Header
 
@@ -21,7 +21,8 @@ words = ctr
 size = encodingsize
 
 
-
+print(ctr)
+print(size)
 
 local w2vvocab = {}
 local v2wvocab = {}
@@ -38,6 +39,7 @@ for line in io.lines(opt.binfilename) do
     end
     str = vecrep[1]
     table.remove(vecrep,1)
+    print(vecrep)
 	vecrep = torch.FloatTensor(vecrep)
 
 	local norm = torch.norm(vecrep,2)

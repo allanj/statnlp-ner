@@ -21,11 +21,8 @@ public class ECRFFeatureManager extends FeatureManager {
 		word, tag, lw, lt, ltt, rw, rt, prefix, suffix,
 		transition};
 	
-	private boolean lowercase = true;
-	
-	public ECRFFeatureManager(GlobalNetworkParam param_g, boolean lowercase) {
+	public ECRFFeatureManager(GlobalNetworkParam param_g) {
 		super(param_g);
-		this.lowercase = lowercase;
 	}
 	
 	@Override
@@ -59,7 +56,7 @@ public class ECRFFeatureManager extends FeatureManager {
 		
 		if(NetworkConfig.USE_NEURAL_FEATURES){
 			Object input = null;
-			String sentenceInput = this.lowercase ? sent.toString().toLowerCase() : sent.toString();
+			String sentenceInput = sent.toString();
 			input = new SimpleImmutableEntry<String, Integer>(sentenceInput, pos);
 			this.addNeural(network, 0, parent_k, children_k_index, input, eId);
 		} else {

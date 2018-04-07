@@ -36,7 +36,7 @@ public class EMain {
 	public static double l2 = 0;
 	
 	public static String trainFile = "data/conll2003/train.txt";
-	public static String devFile = "data/conll2003/dev.txt";
+	public static String devFile = "data/conll2003/test.txt";
 	public static String testFile = "data/conll2003/test.txt";
 	public static String nerOut = "data/conll2003/output/ner_out.txt";
 	public static String tmpOut = "data/conll2003/output/tmp_out.txt";
@@ -44,15 +44,16 @@ public class EMain {
 	public static boolean readModel = false;
 	public static String modelFile = "models/linearNE.m";
 	public static String nnModelFile = "models/lstm.m";
-	public static String neuralType = "lstm";
 	public static int gpuId = -1;
-	public static String nnOptimizer = "lbfgs";
-	public static String embedding = "turian";
+	public static String nnOptimizer = "sgdclip";
+	public static String embedding = "glove";
 	public static int batchSize = 10;
 	public static OptimizerFactory optimizer = OptimizerFactory.getLBFGSFactory();
-	public static boolean evalOnDev = false;
+	public static boolean evalOnDev = true;
 	public static int evalFreq = 1000;
-	public static boolean lowercase = false;
+	public static boolean lowercase = true;
+	public static boolean fixEmbedding = false;
+	public static double dropout = 0.0;
 	
 	public static void main(String[] args) throws IOException, InterruptedException, ClassNotFoundException{
 
@@ -75,7 +76,7 @@ public class EMain {
 		NetworkConfig.L2_REGULARIZATION_CONSTANT = l2;
 		NetworkConfig.NUM_THREADS = numThreads;
 		NetworkConfig.BATCH_SIZE = batchSize; //need to enable batch training first
-		NetworkConfig.RANDOM_BATCH = true;
+		NetworkConfig.RANDOM_BATCH = false;
 		NetworkConfig.PRINT_BATCH_OBJECTIVE = false;
 		NetworkConfig.FEATURE_TOUCH_TEST = true;
 		
@@ -89,14 +90,13 @@ public class EMain {
 		if (!readModel) {
 			List<NeuralNetworkCore> nets = new ArrayList<NeuralNetworkCore>();
 			if(NetworkConfig.USE_NEURAL_FEATURES){
-				int hiddenSize = 100;
-				String optimizer = nnOptimizer;
-				boolean bidirection = true;
-				nets.add(new LampleBiLSTM("SimpleBiLSTM", hiddenSize, bidirection, optimizer, 0.05, 5, labels.size(), gpuId, embedding, 5)
+				reader.preprocess(trainInstances, lowercase);
+				nets.add(new LampleBiLSTM("SimpleBiLSTM", labels.size(), gpuId, embedding,
+						fixEmbedding, dropout)
 						.setModelFile(nnModelFile));
 			} 
 			GlobalNetworkParam gnp = new GlobalNetworkParam(optimizer, new GlobalNeuralNetworkParam(nets));
-			ECRFFeatureManager fa = new ECRFFeatureManager(gnp, lowercase);
+			ECRFFeatureManager fa = new ECRFFeatureManager(gnp);
 			ECRFNetworkCompiler compiler = new ECRFNetworkCompiler(labels);
 			model = DiscriminativeNetworkModel.create(fa, compiler);
 			Function<Instance[], Metric> evalFunc = new Function<Instance[], Metric>() {
@@ -120,7 +120,7 @@ public class EMain {
 		}
 		
 		testInstances = reader.readData(testFile, false, testNumber);
-		Instance[] predictions = model.decode(testInstances);
+		Instance[] predictions = model.test(testInstances);
 		ECRFEval.evalNER(predictions, nerOut);
 	}
 	
@@ -143,6 +143,8 @@ public class EMain {
 		parser.addArgument("-lstm", "--useLSTM").type(Boolean.class).setDefault(NetworkConfig.USE_NEURAL_FEATURES).help("use lstm features");
 		parser.addArgument("--saveModel", "-sm").type(Boolean.class).setDefault(saveModel).help("save model");
 		parser.addArgument("--readModel", "-rm").type(Boolean.class).setDefault(readModel).help("read model");
+		parser.addArgument("-fe", "--fixEmbedding").type(Boolean.class).setDefault(fixEmbedding).help("fix embedding");
+		parser.addArgument("-do", "--dropout").type(Double.class).setDefault(dropout).help("dropout rate for the lstm");
 		Namespace ns = null;
         try {
             ns = parser.parseArgs(args);
@@ -157,25 +159,29 @@ public class EMain {
         numIteration = ns.getInt("iter");
         ECRFEval.windows = ns.getBoolean("windows");
         List<Object> batchOps = ns.getList("batch");
-        NetworkConfig.USE_BATCH_TRAINING = (boolean)batchOps.get(0);
-        batchSize = (int)batchOps.get(1);
+        NetworkConfig.USE_BATCH_TRAINING = batchOps.get(0) instanceof Boolean ? (boolean)batchOps.get(0)
+        		: Boolean.valueOf((String)batchOps.get(0));
+        batchSize = batchOps.get(1) instanceof Integer ? (int)batchOps.get(1) 
+        		:Integer.valueOf((String)batchOps.get(1));
         lowercase = ns.getBoolean("lowercase");
         String optim = ns.getString("optimizer");
         switch (optim) {
         	case "lbfgs": optimizer = OptimizerFactory.getLBFGSFactory(); break;
-        	case "sgdclip": optimizer = OptimizerFactory.getGradientDescentFactoryUsingGradientClipping(BestParamCriteria.BEST_ON_DEV, 0.05, 5);
-        	case "adam" : optimizer = OptimizerFactory.getGradientDescentFactoryUsingAdaM(BestParamCriteria.BEST_ON_DEV);
+        	case "sgdclip": optimizer = OptimizerFactory.getGradientDescentFactoryUsingGradientClipping(BestParamCriteria.BEST_ON_DEV, 0.05, 5); break;
+        	case "adam" : optimizer = OptimizerFactory.getGradientDescentFactoryUsingAdaM(BestParamCriteria.BEST_ON_DEV); break;
         	default: optimizer = OptimizerFactory.getLBFGSFactory(); break;
         }
         embedding = ns.getString("embedding");
         gpuId = ns.getInt("gpuid");
         l2 = ns.getDouble("l2val");
         List<Object> evalDevOps = ns.getList("evalDev");
-        evalOnDev = (boolean)evalDevOps.get(0);
-        evalFreq = (int)evalDevOps.get(1);
+        evalOnDev =evalDevOps.get(0) instanceof Boolean ? (boolean)evalDevOps.get(0): Boolean.valueOf((String)evalDevOps.get(0));
+        evalFreq = evalDevOps.get(1) instanceof Integer ? (int)evalDevOps.get(1) : Integer.valueOf((String)evalDevOps.get(1));
         NetworkConfig.USE_NEURAL_FEATURES = ns.getBoolean("useLSTM");
         saveModel = ns.getBoolean("saveModel");
         readModel = ns.getBoolean("readModel");
+        fixEmbedding = ns.getBoolean("fixEmbedding");
+        dropout = ns.getDouble("dropout");
         for (String key : ns.getAttrs().keySet()) {
         	System.err.println(key + "=" + ns.get(key));
         }

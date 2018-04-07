@@ -11,17 +11,12 @@ public class LampleBiLSTM extends NeuralNetworkCore {
 	 */
 	private static final long serialVersionUID = -6175132248082165824L;
 
-	public LampleBiLSTM(String className, 
-			int hiddenSize, boolean bidirection, String optimizer, double learningRate, int clipping, int numLabels, int gpuId, String embedding, double clipvalue) {
+	public LampleBiLSTM(String className, int numLabels, int gpuId, String embedding,
+			boolean fixEmbedding, double dropout) {
 		super(numLabels, gpuId);
 		config.put("class", className);
-        config.put("hiddenSize", hiddenSize);
-        config.put("bidirection", bidirection);
-        config.put("optimizer", optimizer);
         config.put("numLabels", numLabels);
         config.put("embedding", embedding);
-        config.put("learningRate", learningRate);
-        config.put("clipping", clipvalue);
 	}
 	
 	@Override

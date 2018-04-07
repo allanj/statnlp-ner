@@ -26,6 +26,11 @@ function SimpleBiLSTM:loadEmbObj()
     elseif data.embedding == 'turian' then
         self.embeddingObject = loadTurianEmbObj()
         self.embeddingSize = 50
+    elseif data.embedding == 'glove' then
+        self.embeddingObject = loadGloveEmbObj()
+        self.embeddingSize = 100
+    elseif data.embedding == 'random' then 
+        print("using random embedding")
     else
         error('unknown embedding type: '.. data.embedding)
     end
@@ -76,9 +81,11 @@ end
 
 function SimpleBiLSTM:buildBiGRU(inputSize, outputSize, dropout, tanhGRU)
     local bigru = nn.Sequential():add(nn.Transpose({1,2})):add(nn.SplitTable(1))
-    local fwdSeq = nn.Sequencer(nn.GRU(inputSize, outputSize, 9999, dropout):maskZero(1))
+    -- local fwdSeq = nn.Sequencer(nn.GRU(inputSize, outputSize, 9999, dropout):maskZero(1))
+    local fwdSeq = nn.Sequencer(nn.FastLSTM(inputSize, outputSize):maskZero(1))
     local bwdSeq = nn.Sequential():add(nn.ReverseTable())
-    bwdSeq:add(nn.Sequencer(nn.GRU(inputSize, outputSize, 9999, dropout):maskZero(1)))
+    -- bwdSeq:add(nn.Sequencer(nn.GRU(inputSize, outputSize, 9999, dropout):maskZero(1)))
+    bwdSeq:add(nn.Sequencer(nn.FastLSTM(inputSize, outputSize):maskZero(1)))
     bwdSeq:add(nn.ReverseTable())
     local biconcat = nn.ConcatTable():add(fwdSeq):add(bwdSeq)
     bigru:add(biconcat):add(nn.ZipTable()):add(nn.Sequencer(nn.JoinTable(1,1)))
@@ -106,8 +113,10 @@ function SimpleBiLSTM:createNetwork()
     local layer2hiddenSize = data.layer2hiddenSize
     local gruHiddenSize = self.gruHiddenSize
     local sharedLookupTable = nn.LookupTableMaskZero(self.vocabSize, embeddingSize)
-    for i =1, self.vocabSize do
-        sharedLookupTable.weight[i+1]:copy(self.embeddingObject:word2vec(self.idx2word[i]))
+    if not data.embedding == 'random' then
+        for i =1, self.vocabSize do
+            sharedLookupTable.weight[i+1]:copy(self.embeddingObject:word2vec(self.idx2word[i]))
+        end
     end
     self.lt = sharedLookupTable
     print("Word Embedding layer: " .. self.lt.weight:size(1) .. " x " .. self.lt.weight:size(2))
@@ -143,9 +152,11 @@ function SimpleBiLSTM:obtainParams()
             -- since the the network is gpu network.
             self.paramsDouble = self.params:double()
             self.paramsDouble:retain()
+            self.params:retain()
             self.paramsPtr = torch.pointer(self.paramsDouble)
             self.gradParamsDouble = self.gradParams:double()
             self.gradParamsDouble:retain()
+            self.gradParams:retain()
             self.gradParamsPtr = torch.pointer(self.gradParamsDouble)
             return self.paramsPtr, self.gradParamsPtr
         else

@@ -113,4 +113,8 @@ public class WordToken extends Token {
 	
 	public String[] getFS(){return this.fs;}
 	public void setFS(String[] fs){this.fs = fs;}
+	
+	public void setForm(String form) {
+		this._form = form;
+	}
 }

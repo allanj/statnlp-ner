@@ -13,4 +13,6 @@ public class EConf {
 	public static final String MISC = "MISC";
 	public static final String PER = "PER";
 	public static final String LOC = "LOC";
+	
+	public static final String UNK = "##UNK##";
 }

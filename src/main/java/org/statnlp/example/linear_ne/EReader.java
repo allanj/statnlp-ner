@@ -3,7 +3,10 @@ package org.statnlp.example.linear_ne;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
 
 import org.statnlp.commons.io.RAWF;
 import org.statnlp.commons.types.Sentence;
@@ -12,6 +15,7 @@ import org.statnlp.commons.types.WordToken;
 public class EReader {
 
 	public List<String> labels;
+	private static final long seed = 1234; 
 	
 	public EReader(List<String> labels) {
 		this.labels = labels;
@@ -73,6 +77,44 @@ public class EReader {
 		br.close();
 		System.err.println("[Info] total:"+ insts.size()+" Instance. ");
 		return insts.toArray(new EInst[insts.size()]);
+	}
+	
+	/**
+	 * Replace singelton with UNK.
+	 * @param instances
+	 */
+	public void preprocess(EInst[] instances, boolean lowercase) {
+		Random rand = new Random(seed);
+		Map<String, Integer> wordCount = new HashMap<>();
+		for(EInst inst : instances) {
+			Sentence sent = inst.getInput();
+			for(int p = 0; p < sent.length(); p++) {
+				String word = sent.get(p).getForm();
+				if (lowercase) {
+					sent.get(p).setForm(word.toLowerCase());
+					word = sent.get(p).getForm();
+				}
+				word = word.replaceAll("\\d", "0");
+				sent.get(p).setForm(word);
+				if (wordCount.containsKey(word)) {
+					int num =  wordCount.get(word);
+					wordCount.put(word, num + 1);
+				} else {
+					wordCount.put(word, 1);
+				}
+			}
+		}
+		for(EInst inst : instances) {
+			Sentence sent = inst.getInput();
+			for(int p = 0; p < sent.length(); p++) {
+				String word = sent.get(p).getForm();
+				int num = wordCount.get(word);
+				boolean change = rand.nextBoolean();
+				if (num == 1 && change) {
+					sent.get(p).setForm(EConf.UNK);
+				}
+			}
+		}
 	}
 
 }
