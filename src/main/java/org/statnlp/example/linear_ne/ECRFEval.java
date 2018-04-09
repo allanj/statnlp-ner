@@ -93,7 +93,7 @@ public class ECRFEval {
 				pw.write((i+1)+" "+sent.get(i).getForm()+" "+sent.get(i).getTag()+" "+trueEntities.get(i)+" "+predEntities.get(i)+" "+headIndex+"\n");
 			}
 			pw.write("\n");
-		}
+		} 
 		
 		pw.close();
 	}
