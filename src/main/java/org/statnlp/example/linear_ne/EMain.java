@@ -145,6 +145,7 @@ public class EMain {
 		parser.addArgument("--readModel", "-rm").type(Boolean.class).setDefault(readModel).help("read model");
 		parser.addArgument("-fe", "--fixEmbedding").type(Boolean.class).setDefault(fixEmbedding).help("fix embedding");
 		parser.addArgument("-do", "--dropout").type(Double.class).setDefault(dropout).help("dropout rate for the lstm");
+		parser.addArgument("-os", "--system").type(String.class).setDefault(NetworkConfig.OS).help("system for lua");
 		Namespace ns = null;
         try {
             ns = parser.parseArgs(args);
@@ -182,6 +183,7 @@ public class EMain {
         readModel = ns.getBoolean("readModel");
         fixEmbedding = ns.getBoolean("fixEmbedding");
         dropout = ns.getDouble("dropout");
+        NetworkConfig.OS = ns.getString("system");
         for (String key : ns.getAttrs().keySet()) {
         	System.err.println(key + "=" + ns.get(key));
         }
