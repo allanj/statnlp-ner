@@ -54,6 +54,8 @@ public class EMain {
 	public static boolean lowercase = true;
 	public static boolean fixEmbedding = false;
 	public static double dropout = 0.0;
+	public static int hiddenSize = 100;
+	public static int embeddingSize = 100;
 	
 	public static void main(String[] args) throws IOException, InterruptedException, ClassNotFoundException{
 
@@ -92,8 +94,8 @@ public class EMain {
 			if(NetworkConfig.USE_NEURAL_FEATURES){
 				reader.preprocess(trainInstances, lowercase, true);
 				reader.preprocess(devInstances, lowercase, false);
-				nets.add(new LampleBiLSTM("SimpleBiLSTM", labels.size(), gpuId, embedding,
-						fixEmbedding, dropout, reader.maxSentSize, reader.maxTestSize)
+				nets.add(new BRNN("SimpleBiLSTM", labels.size(), gpuId, embedding,
+						fixEmbedding, dropout, hiddenSize, embeddingSize)
 						.setModelFile(nnModelFile));
 			} 
 			GlobalNetworkParam gnp = new GlobalNetworkParam(optimizer, new GlobalNeuralNetworkParam(nets));
@@ -119,7 +121,6 @@ public class EMain {
 			oos.writeObject(model);
 			oos.close();
 		}
-		reader.maxTestSize = 0;
 		testInstances = reader.readData(testFile, false, testNumber);
 		if (NetworkConfig.USE_NEURAL_FEATURES) {
 			reader.preprocess(testInstances, lowercase, false);
@@ -153,6 +154,8 @@ public class EMain {
 		parser.addArgument("-fe", "--fixEmbedding").type(Boolean.class).setDefault(fixEmbedding).help("fix embedding");
 		parser.addArgument("-do", "--dropout").type(Double.class).setDefault(dropout).help("dropout rate for the lstm");
 		parser.addArgument("-os", "--system").type(String.class).setDefault(NetworkConfig.OS).help("system for lua");
+		parser.addArgument("-es", "--embeddingSize").type(Integer.class).setDefault(embeddingSize).help("embedding size");
+		parser.addArgument("-hs", "--hiddenSize").type(Integer.class).setDefault(hiddenSize).help("hidden size");
 		Namespace ns = null;
         try {
             ns = parser.parseArgs(args);
@@ -193,6 +196,8 @@ public class EMain {
         readModel = ns.getBoolean("readModel");
         fixEmbedding = ns.getBoolean("fixEmbedding");
         dropout = ns.getDouble("dropout");
+        embeddingSize = ns.getInt("embeddingSize");
+        hiddenSize = ns.getInt("hiddenSize");
         NetworkConfig.OS = ns.getString("system");
         for (String key : ns.getAttrs().keySet()) {
         	System.err.println(key + "=" + ns.get(key));

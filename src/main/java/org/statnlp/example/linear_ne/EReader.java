@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 
 import org.statnlp.commons.io.RAWF;
 import org.statnlp.commons.types.Sentence;
@@ -15,9 +14,6 @@ import org.statnlp.commons.types.WordToken;
 public class EReader {
 
 	public List<String> labels;
-	private static final long seed = 1234;
-	protected int maxSentSize = 0;
-	protected int maxTestSize = 0;
 	
 	public EReader(List<String> labels) {
 		this.labels = labels;
@@ -62,11 +58,6 @@ public class EReader {
 						this.labels.add(output.get(i));
 					}
 				}
-				if (isTraining) {
-					this.maxSentSize = Math.max(this.maxSentSize, sent.length());
-				} else {
-					this.maxTestSize = Math.max(this.maxTestSize, sent.length());
-				}
 				EInst inst = new EInst(index++, 1.0, sent, output);
 				if(isTraining) inst.setLabeled(); else inst.setUnlabeled();
 				insts.add(inst);
@@ -82,7 +73,6 @@ public class EReader {
 			}
 		}
 		br.close();
-		System.err.println("[Info] max sentence length: " + (isTraining ? this.maxSentSize : this.maxTestSize));
 		System.err.println("[Info] total:"+ insts.size()+" Instance. ");
 		return insts.toArray(new EInst[insts.size()]);
 	}
@@ -111,23 +101,6 @@ public class EReader {
 				}
 			}
 		}
-//		for(EInst inst : instances) {
-//			Sentence sent = inst.getInput();
-//			System.out.println(sent.toString());
-//		}
-//		if (isTraining) {
-//			for(EInst inst : instances) {
-//				Sentence sent = inst.getInput();
-//				for(int p = 0; p < sent.length(); p++) {
-//					String word = sent.get(p).getForm();
-//					int num = wordCount.get(word);
-//					boolean change = rand.nextBoolean();
-//					if (num == 1 && change) {
-//						sent.get(p).setForm(EConf.UNK);
-//					}
-//				}
-//			}
-//		}
 	}
 
 }
