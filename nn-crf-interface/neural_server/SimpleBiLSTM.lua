@@ -82,26 +82,27 @@ end
 function SimpleBiLSTM:buildBiGRU(inputSize, outputSize, dropout, tanhGRU)
     local bigru = nn.Sequential():add(nn.Transpose({1,2})):add(nn.SplitTable(1))
     -- local fwdSeq = nn.Sequencer(nn.GRU(inputSize, outputSize, 9999, dropout):maskZero(1))
-    local fwdSeq = nn.Sequencer(nn.FastLSTM(inputSize, outputSize):maskZero(1))
+    local fwdSeq = nn.Sequencer(nn.GRU(inputSize, outputSize):maskZero(1))
     local bwdSeq = nn.Sequential():add(nn.ReverseTable())
     -- bwdSeq:add(nn.Sequencer(nn.GRU(inputSize, outputSize, 9999, dropout):maskZero(1)))
-    bwdSeq:add(nn.Sequencer(nn.FastLSTM(inputSize, outputSize):maskZero(1)))
+    bwdSeq:add(nn.Sequencer(nn.GRU(inputSize, outputSize):maskZero(1)))
     bwdSeq:add(nn.ReverseTable())
     local biconcat = nn.ConcatTable():add(fwdSeq):add(bwdSeq)
     bigru:add(biconcat):add(nn.ZipTable()):add(nn.Sequencer(nn.JoinTable(1,1)))
     local mapTable = nn.MapTable()
-    local combineSize
     if tanhGRU then
         local mapOp = nn.Sequential()
-        mapOp:add(nn.Linear(2 * outputSize, outputSize)):add(nn.Tanh())
+        mapOp:add(nn.Linear(2 * outputSize, outputSize))
+                :add(nn.Tanh()):add(nn.Linear(outputSize, self.numLabels))
         mapOp:add(nn.Unsqueeze(1))
         mapTable:add(mapOp)
-        combineSize = outputSize
     else
-        mapTable:add(nn.Unsqueeze(1))
-        combineSize = 2 * outputSize
+        local mapOp = nn.Sequential()
+        mapOp:add(nn.Linear(2 * outputSize, self.numLabels))
+        mapOp:add(nn.Unsqueeze(1))
+        mapTable:add(mapOp)
     end
-    bigru:add(mapTable):add(nn.JoinTable(1)):add(nn.Transpose({1,2}))
+    bigru:add(mapTable):add(nn.JoinTable(1)) -- :add(nn.Transpose({1,2}))
     return bigru
 end
 
@@ -126,6 +127,7 @@ function SimpleBiLSTM:createNetwork()
     end
 
     local brnn = self:buildBiGRU(embeddingSize, embeddingSize, self.dropout, true)
+    -- local brnn = nn.SeqBRNNGRU(embeddingSize, embeddingSize, true, nn.JoinTable(3))
     
     local net = nn.Sequential()
     net:add(self.lt)
@@ -173,25 +175,31 @@ function SimpleBiLSTM:forward(isTraining, batchInputIds)
     if self.gpuid >= 0 and not self.doOptimization then
         self.params:copy(self.paramsDouble:cuda())
     end
-    if isTraining then
-        self.net:training()
-    else
-        self.net:evaluate()
-    end
+    -- if isTraining then
+    --     self.net:training()
+    -- else
+    --     self.net:evaluate()
+    -- end
     local nnInput = self:getForwardInput(isTraining, batchInputIds)
     local lstmOutput
     if isTraining then
         lstmOutput = self.net:forward(nnInput)
     else
+        -- lstmOutput = self.net:forward(nnInput)
         lstmOutput = torch.Tensor()
         if self.gpuid >=0 then lstmOutput = lstmOutput:cuda() end
         local instSize = nnInput:size(1) --number of sentences 
-        local testBatchSize = 10   ---test batch size = 10
-        for i = 1, instSize, testBatchSize do
-            if i + testBatchSize - 1 > instSize then testBatchSize =  instSize - i + 1 end
-            local tmpOut = self.net:forward(nnInput:narrow(1, i, testBatchSize))
-            lstmOutput = torch.cat(lstmOutput, tmpOut, 1)
+        -- local testBatchSize = 10   ---test batch size = 10
+        -- print(instSize)
+        for i = 1, instSize do 
+            local tmpOut = self.net:forward(nnInput:narrow(1, i, 1))
+            lstmOutput = torch.cat(lstmOutput, tmpOut, 2)
         end
+        -- for i = 1, instSize, testBatchSize do
+        --     if i + testBatchSize - 1 > instSize then testBatchSize =  instSize - i + 1 end
+        --     local tmpOut = self.net:forward(nnInput:narrow(1, i, testBatchSize))
+        --     lstmOutput = torch.cat(lstmOutput, tmpOut, 2)
+        -- end
     end
     if self.gpuid >= 0 then
         lstmOutput = lstmOutput:double()
@@ -209,6 +217,14 @@ function SimpleBiLSTM:getForwardInput(isTraining, batchInputIds)
             batchInputIds:add(1) -- because the sentence is 0 indexed.
             self.batchInputIds = batchInputIds
             self.batchInput = self.x:index(1, batchInputIds)
+            for i=1 , self.batchInput:size(1) do
+                for j=1, self.batchInput:size(2) do
+                    if self.wordCount[self.batchInput[i][j]] == 1 and 
+                        torch.uniform() < 0.5 then
+                        self.batchInput[i][j] = self.word2idx[self.unkToken]
+                    end
+                end
+            end
             return self.batchInput
         else
             return self.x
@@ -300,8 +316,11 @@ function SimpleBiLSTM:buildVocab(sentences, sentence_toks)
     if self.idx2word ~= nil then
         return 
     end
-    local embeddingObject = self.embeddingObject
-    local embW2V = embeddingObject.w2vvocab
+    local embeddingObject = self.embeddingObject or nil
+    local embW2V = nil
+    if embeddingObject ~= nil then
+        embW2V = embeddingObject.w2vvocab
+    end
 
     self.idx2word = {}
     self.word2idx = {}
@@ -311,6 +330,21 @@ function SimpleBiLSTM:buildVocab(sentences, sentence_toks)
     self.idx2word[self.vocabSize] = self.unkToken
     self.unkTokens = {}
     self:buildVocabForTokens(sentences, sentence_toks, embW2V)
+    if self.wordCount == nil then
+        --only happen during training
+        self.wordCount = {}
+        for i = 1, #sentences do
+            local tokens = sentence_toks[i]
+            for j = 1, #tokens do 
+                local tokId = self.word2idx[tokens[j]]
+                if self.wordCount[tokId] ~= nil then
+                    self.wordCount[tokId] = self.wordCount[tokId] + 1
+                else
+                    self.wordCount[tokId] = 1 
+                end
+            end
+        end    
+    end
     print("number of unique words (including unknown):".. self.vocabSize.." (unknown words are replaced by unk)")
     print("number of unknown tokens (not unique): ".. countTable(self.unkTokens))
 end
@@ -320,8 +354,9 @@ function SimpleBiLSTM:buildVocabForTokens(sentences, toks, embW2V)
         local tokens = toks[i]
         for j = 1, #tokens do 
             local tok = tokens[j]
-            local tokInEmbId = embW2V[tok]
-            if tokInEmbId == nil and self.word2idx[tok] == nil then
+            local tokInEmbId = nil 
+            if embW2V ~= nil then tokInEmbId = embW2V[tok] end
+            if embW2V ~= nil and tokInEmbId == nil and self.word2idx[tok] == nil then
                 ---not in the pretrained embedding, just use unk
                 self.word2idx[tok] = self.word2idx[self.unkToken]
                 if self.unkTokens[tok] == nil then

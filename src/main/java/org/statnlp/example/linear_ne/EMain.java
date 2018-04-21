@@ -36,7 +36,7 @@ public class EMain {
 	public static double l2 = 0;
 	
 	public static String trainFile = "data/conll2003/train.txt";
-	public static String devFile = "data/conll2003/test.txt";
+	public static String devFile = "data/conll2003/dev.txt";
 	public static String testFile = "data/conll2003/test.txt";
 	public static String nerOut = "data/conll2003/output/ner_out.txt";
 	public static String tmpOut = "data/conll2003/output/tmp_out.txt";
@@ -76,7 +76,7 @@ public class EMain {
 		NetworkConfig.L2_REGULARIZATION_CONSTANT = l2;
 		NetworkConfig.NUM_THREADS = numThreads;
 		NetworkConfig.BATCH_SIZE = batchSize; //need to enable batch training first
-		NetworkConfig.RANDOM_BATCH = false;
+		NetworkConfig.RANDOM_BATCH = true;
 		NetworkConfig.PRINT_BATCH_OBJECTIVE = false;
 		NetworkConfig.FEATURE_TOUCH_TEST = true;
 		
@@ -90,9 +90,10 @@ public class EMain {
 		if (!readModel) {
 			List<NeuralNetworkCore> nets = new ArrayList<NeuralNetworkCore>();
 			if(NetworkConfig.USE_NEURAL_FEATURES){
-				reader.preprocess(trainInstances, lowercase);
+				reader.preprocess(trainInstances, lowercase, true);
+				reader.preprocess(devInstances, lowercase, false);
 				nets.add(new LampleBiLSTM("SimpleBiLSTM", labels.size(), gpuId, embedding,
-						fixEmbedding, dropout)
+						fixEmbedding, dropout, reader.maxSentSize, reader.maxTestSize)
 						.setModelFile(nnModelFile));
 			} 
 			GlobalNetworkParam gnp = new GlobalNetworkParam(optimizer, new GlobalNeuralNetworkParam(nets));
@@ -118,8 +119,11 @@ public class EMain {
 			oos.writeObject(model);
 			oos.close();
 		}
-		
+		reader.maxTestSize = 0;
 		testInstances = reader.readData(testFile, false, testNumber);
+		if (NetworkConfig.USE_NEURAL_FEATURES) {
+			reader.preprocess(testInstances, lowercase, false);
+		}
 		Instance[] predictions = model.test(testInstances);
 		ECRFEval.evalNER(predictions, nerOut);
 	}
@@ -131,6 +135,9 @@ public class EMain {
 		parser.addArgument("--train_num").type(Integer.class).setDefault(trainNumber).help("number of training data");
 		parser.addArgument("--dev_num").type(Integer.class).setDefault(devNumber).help("number of validation data");
 		parser.addArgument("--test_num").type(Integer.class).setDefault(testNumber).help("number of test data");
+		parser.addArgument("--train_file").type(String.class).setDefault(trainFile).help("training file");
+		parser.addArgument("--dev_file").type(String.class).setDefault(devFile).help("development set");
+		parser.addArgument("--test_file").type(String.class).setDefault(testFile).help("test file");
 		parser.addArgument("-it", "--iter").type(Integer.class).setDefault(numIteration).help("number of iterations");
 		parser.addArgument("-w", "--windows").type(Boolean.class).setDefault(ECRFEval.windows).help("windows system for running eval script");
 		parser.addArgument("-b", "--batch").nargs("*").setDefault(new Object[] {NetworkConfig.USE_BATCH_TRAINING, batchSize}).help("batch training configuration");
@@ -157,6 +164,9 @@ public class EMain {
         trainNumber = ns.getInt("train_num");
         devNumber = ns.getInt("dev_num");
         testNumber = ns.getInt("test_num");
+        trainFile = ns.getString("train_file");
+        devFile = ns.getString("dev_file");
+        testFile = ns.getString("test_file");
         numIteration = ns.getInt("iter");
         ECRFEval.windows = ns.getBoolean("windows");
         List<Object> batchOps = ns.getList("batch");

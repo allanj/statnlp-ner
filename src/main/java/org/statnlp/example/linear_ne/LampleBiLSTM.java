@@ -12,18 +12,20 @@ public class LampleBiLSTM extends NeuralNetworkCore {
 	private static final long serialVersionUID = -6175132248082165824L;
 
 	public LampleBiLSTM(String className, int numLabels, int gpuId, String embedding,
-			boolean fixEmbedding, double dropout) {
+			boolean fixEmbedding, double dropout, int maxSentSize, int devSize) {
 		super(numLabels, gpuId);
 		config.put("class", className);
         config.put("numLabels", numLabels);
         config.put("embedding", embedding);
+        config.put("hiddenSize", 100);
+        config.put("embeddingSize", 100);
 	}
 	
 	@Override
 	public int hyperEdgeInput2OutputRowIndex(Object edgeInput) {
 		@SuppressWarnings("unchecked")
 		SimpleImmutableEntry<String, Integer> sentAndPos = (SimpleImmutableEntry<String, Integer>) edgeInput;
-		int sentID = this.getNNInputID(sentAndPos.getKey()); 
+		int sentID = this.getNNInputID(sentAndPos.getKey());
 		int row = sentAndPos.getValue() * this.getNNInputSize() + sentID;
 		return row;
 	}
