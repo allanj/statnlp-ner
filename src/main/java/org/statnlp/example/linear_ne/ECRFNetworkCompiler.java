@@ -25,7 +25,7 @@ public class ECRFNetworkCompiler extends NetworkCompiler{
 	//length -1: should be end tag;
 	private List<String> labels;
 	private Map<String, Integer> labelIndex;
-	private final boolean DEBUG = true;
+	private final boolean DEBUG = false;
 	
 	static {
 		NetworkIDMapper.setCapacity(new int[]{150, 50, 3});
@@ -74,8 +74,9 @@ public class ECRFNetworkCompiler extends NetworkCompiler{
 		lcrfNetwork.addNode(root);
 		lcrfNetwork.addEdge(root, children);
 		BaseNetwork network = lcrfNetwork.build(networkId, inst, param, this);
-		if(DEBUG && !genericUnlabeledNetwork.contains(network)){
-			System.err.println("not contains");
+		if(DEBUG){
+			if (!genericUnlabeledNetwork.contains(network))
+				System.err.println("not contains");
 		}
 		return network;
 	}

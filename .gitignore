@@ -1,1 +1,7 @@
 /target/
+data/*
+*.xml
+models/*
+nn-crf-interface/neural_server/glove_torch/*.t7
+nn-crf-interface/neural_server/glove_torch/*.txt
+

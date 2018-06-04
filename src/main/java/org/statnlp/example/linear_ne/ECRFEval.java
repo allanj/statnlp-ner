@@ -48,7 +48,6 @@ public class ECRFEval {
 		return evalNER(nerOut);
 	}
 	
-	
 	private static Metric evalNER(String outputFile){
 		double fscore = 0;
 		try{

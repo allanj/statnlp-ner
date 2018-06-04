@@ -1,6 +1,7 @@
 package org.statnlp.example.linear_ne;
 
 import java.util.AbstractMap.SimpleImmutableEntry;
+import java.util.ArrayList;
 
 import org.statnlp.commons.types.Sentence;
 import org.statnlp.example.linear_ne.ECRFNetworkCompiler.NodeType;
@@ -11,15 +12,12 @@ import org.statnlp.hypergraph.Network;
 import org.statnlp.hypergraph.NetworkConfig;
 import org.statnlp.hypergraph.NetworkIDMapper;
 
-import java.util.ArrayList;
-
 public class ECRFFeatureManager extends FeatureManager {
 
 	private static final long serialVersionUID = 376931974939202432L;
 
 	public enum FeaType{
-		word, tag, lw, lt, ltt, rw, rt, prefix, suffix,
-		transition};
+		word, transition};
 	
 	public ECRFFeatureManager(GlobalNetworkParam param_g) {
 		super(param_g);

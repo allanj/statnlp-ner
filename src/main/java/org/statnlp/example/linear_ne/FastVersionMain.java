@@ -8,8 +8,8 @@ import java.util.List;
 import java.util.function.Function;
 
 import org.statnlp.commons.io.RAWF;
-import org.statnlp.commons.ml.opt.GradientDescentOptimizer.BestParamCriteria;
 import org.statnlp.commons.ml.opt.OptimizerFactory;
+import org.statnlp.commons.ml.opt.GradientDescentOptimizer.BestParamCriteria;
 import org.statnlp.commons.types.Instance;
 import org.statnlp.hypergraph.DiscriminativeNetworkModel;
 import org.statnlp.hypergraph.GlobalNetworkParam;
@@ -24,8 +24,9 @@ import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
 
-public class EMain {
-	
+public class FastVersionMain {
+
+
 	public static boolean DEBUG = false;
 
 	public static int trainNumber = -100;
@@ -203,4 +204,5 @@ public class EMain {
         	System.err.println(key + "=" + ns.get(key));
         }
 	}
+
 }
