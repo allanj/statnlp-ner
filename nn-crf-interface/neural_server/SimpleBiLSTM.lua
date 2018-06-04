@@ -69,6 +69,7 @@ function SimpleBiLSTM:initialize(javadata, ...)
     if not isTraining then 
         self.testInput = self:prepare_input(isTraining)
     end
+
     self.output = torch.Tensor()
     self.gradOutput = torch.Tensor()
     local outputAndGradOutputPtr = {... }
@@ -175,11 +176,11 @@ function SimpleBiLSTM:forward(isTraining, batchInputIds)
     if self.gpuid >= 0 and not self.doOptimization then
         self.params:copy(self.paramsDouble:cuda())
     end
-    -- if isTraining then
-    --     self.net:training()
-    -- else
-    --     self.net:evaluate()
-    -- end
+    if isTraining then
+        self.net:training()
+    else
+        self.net:evaluate()
+    end
     local nnInput = self:getForwardInput(isTraining, batchInputIds)
     local lstmOutput
     if isTraining then
@@ -331,7 +332,7 @@ function SimpleBiLSTM:buildVocab(sentences, sentence_toks)
     self.unkTokens = {}
     self:buildVocabForTokens(sentences, sentence_toks, embW2V)
     if self.wordCount == nil then
-        --only happen during training
+        --only happen during training --this is for unk token training.
         self.wordCount = {}
         for i = 1, #sentences do
             local tokens = sentence_toks[i]
