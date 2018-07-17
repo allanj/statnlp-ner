@@ -28,15 +28,15 @@ public class EMain {
 	
 	public static boolean DEBUG = false;
 
-	public static int trainNumber = -100;
-	public static int devNumber = -100;
-	public static int testNumber = -100;
+	public static int trainNumber = 100;
+	public static int devNumber = 100;
+	public static int testNumber = 100;
 	public static int numIteration = 100;
 	public static int numThreads = 5;
 	public static double l2 = 0;
 	
 	public static String trainFile = "data/conll2003/train.txt";
-	public static String devFile = "data/conll2003/dev.txt";
+	public static String devFile = "data/conll2003/test.txt";
 	public static String testFile = "data/conll2003/test.txt";
 	public static String nerOut = "data/conll2003/output/ner_out.txt";
 	public static String tmpOut = "data/conll2003/output/tmp_out.txt";
@@ -53,7 +53,7 @@ public class EMain {
 	public static int evalFreq = 1000;
 	public static boolean lowercase = true;
 	public static boolean fixEmbedding = false;
-	public static double dropout = 0.0;
+	public static double dropout = 0.5;
 	public static int hiddenSize = 100;
 	public static int embeddingSize = 100;
 	

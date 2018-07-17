@@ -80,33 +80,6 @@ function SimpleBiLSTM:initialize(javadata, ...)
     end
 end
 
-function SimpleBiLSTM:buildBiGRU(inputSize, outputSize, dropout, tanhGRU)
-    local bigru = nn.Sequential():add(nn.Transpose({1,2})):add(nn.SplitTable(1))
-    -- local fwdSeq = nn.Sequencer(nn.GRU(inputSize, outputSize, 9999, dropout):maskZero(1))
-    local fwdSeq = nn.Sequencer(nn.GRU(inputSize, outputSize):maskZero(1))
-    local bwdSeq = nn.Sequential():add(nn.ReverseTable())
-    -- bwdSeq:add(nn.Sequencer(nn.GRU(inputSize, outputSize, 9999, dropout):maskZero(1)))
-    bwdSeq:add(nn.Sequencer(nn.GRU(inputSize, outputSize):maskZero(1)))
-    bwdSeq:add(nn.ReverseTable())
-    local biconcat = nn.ConcatTable():add(fwdSeq):add(bwdSeq)
-    bigru:add(biconcat):add(nn.ZipTable()):add(nn.Sequencer(nn.JoinTable(1,1)))
-    local mapTable = nn.MapTable()
-    if tanhGRU then
-        local mapOp = nn.Sequential()
-        mapOp:add(nn.Linear(2 * outputSize, outputSize))
-                :add(nn.Tanh()):add(nn.Linear(outputSize, self.numLabels))
-        mapOp:add(nn.Unsqueeze(1))
-        mapTable:add(mapOp)
-    else
-        local mapOp = nn.Sequential()
-        mapOp:add(nn.Linear(2 * outputSize, self.numLabels))
-        mapOp:add(nn.Unsqueeze(1))
-        mapTable:add(mapOp)
-    end
-    bigru:add(mapTable):add(nn.JoinTable(1)) -- :add(nn.Transpose({1,2}))
-    return bigru
-end
-
 --The network is only created once is used.
 function SimpleBiLSTM:createNetwork()
     local data = self.data
@@ -127,15 +100,23 @@ function SimpleBiLSTM:createNetwork()
         self.lt.parameters = function() end
     end
 
-    local brnn = self:buildBiGRU(embeddingSize, embeddingSize, self.dropout, true)
-    -- local brnn = nn.SeqBRNNGRU(embeddingSize, embeddingSize, true, nn.JoinTable(3))
+    -- local brnn = self:buildBiGRU(embeddingSize, embeddingSize, self.dropout, true)
+    local brnn = nn.SeqBRNN(embeddingSize, embeddingSize, true, nn.JoinTable(3))
     
     local net = nn.Sequential()
     net:add(self.lt)
-    -- if self.embDropout > 0 then
-    --     net:add(nn.Dropout(self.embDropout)) --adding lookup table
-    -- end
+    net:add(nn.Dropout(0.5))
     net:add(brnn) -- go into brnn
+    net:add(nn.Transpose({1, 2}))
+    net:add(nn.SplitTable(1))
+    local mapTable = nn.MapTable()
+    local mapOp = nn.Sequential()
+    mapOp:add(nn.Linear(2 * embeddingSize, embeddingSize))
+            :add(nn.Tanh()):add(nn.Linear(embeddingSize, self.numLabels))
+    mapOp:add(nn.Unsqueeze(1))
+    mapTable:add(mapOp)
+    net:add(mapTable)
+    net:add(nn.JoinTable(1))
     self.net = net
     if self.gpuid >= 0 then
         self.net:cuda() 
