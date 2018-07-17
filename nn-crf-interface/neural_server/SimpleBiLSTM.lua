@@ -171,17 +171,17 @@ function SimpleBiLSTM:forward(isTraining, batchInputIds)
         lstmOutput = torch.Tensor()
         if self.gpuid >=0 then lstmOutput = lstmOutput:cuda() end
         local instSize = nnInput:size(1) --number of sentences 
-        -- local testBatchSize = 10   ---test batch size = 10
+        local testBatchSize = 10   ---test batch size = 10
         -- print(instSize)
-        for i = 1, instSize do 
-            local tmpOut = self.net:forward(nnInput:narrow(1, i, 1))
-            lstmOutput = torch.cat(lstmOutput, tmpOut, 2)
-        end
-        -- for i = 1, instSize, testBatchSize do
-        --     if i + testBatchSize - 1 > instSize then testBatchSize =  instSize - i + 1 end
-        --     local tmpOut = self.net:forward(nnInput:narrow(1, i, testBatchSize))
+        -- for i = 1, instSize do 
+        --     local tmpOut = self.net:forward(nnInput:narrow(1, i, 1))
         --     lstmOutput = torch.cat(lstmOutput, tmpOut, 2)
         -- end
+        for i = 1, instSize, testBatchSize do
+            if i + testBatchSize - 1 > instSize then testBatchSize =  instSize - i + 1 end
+            local tmpOut = self.net:forward(nnInput:narrow(1, i, testBatchSize))
+            lstmOutput = torch.cat(lstmOutput, tmpOut, 2)
+        end
     end
     if self.gpuid >= 0 then
         lstmOutput = lstmOutput:double()
