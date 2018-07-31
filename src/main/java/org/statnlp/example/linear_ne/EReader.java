@@ -35,6 +35,7 @@ public class EReader {
 		int index =1;
 		List<WordToken> words = new ArrayList<WordToken>();
 		ArrayList<String> output = new ArrayList<String>();
+		int maxLen = -1;
 		while((line = br.readLine())!=null){
 			if(line.equals("")){
 				WordToken[] wordsArr = new WordToken[words.size()];
@@ -54,10 +55,11 @@ public class EReader {
 							if (nextEnt.equals(EConf.O) || nextEnt.startsWith(EConf.B_)) output.set(i, EConf.E_ + currEnt.substring(2));
 						}
 					}
-					if (!this.labels.contains(output.get(i))) {
+					if (isTraining && !this.labels.contains(output.get(i))) {
 						this.labels.add(output.get(i));
 					}
 				}
+				maxLen = Math.max(maxLen, sent.length());
 				EInst inst = new EInst(index++, 1.0, sent, output);
 				if(isTraining) inst.setLabeled(); else inst.setUnlabeled();
 				insts.add(inst);
@@ -74,6 +76,7 @@ public class EReader {
 		}
 		br.close();
 		System.err.println("[Info] total:"+ insts.size()+" Instance. ");
+		System.err.println("[Info] maximum length:"+ maxLen);
 		return insts.toArray(new EInst[insts.size()]);
 	}
 	

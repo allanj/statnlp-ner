@@ -12,6 +12,8 @@ public class GloveWordEmbedding implements WordEmbedding{
 
 	private Map<String, double[]> lookupTable;
 	
+	private static final int  dim = 100;
+	
 	public GloveWordEmbedding(String file) {
 		System.out.println("[Glove] Loading Glove embeddings....");
 		this.readEmbedding(file);
@@ -28,7 +30,7 @@ public class GloveWordEmbedding implements WordEmbedding{
 			while((line = br.readLine()) != null) {
 				String[] vals = line.split(" ");
 				String word = vals[0];
-				double[] emb = new double[50];
+				double[] emb = new double[dim];
 				for (int i = 0; i < emb.length; i++) {
 					emb[i] = Double.valueOf(vals[i + 1]);
 				}
@@ -45,7 +47,8 @@ public class GloveWordEmbedding implements WordEmbedding{
 	}
 	
 	public double[] getEmbedding(String word) {
-		return lookupTable.containsKey(word) ?  lookupTable.get(word) : lookupTable.get("<UNK>");
+		String x = word.toLowerCase();
+		return lookupTable.containsKey(x) ?  lookupTable.get(x) : lookupTable.get("unk");
 	}
 	
 	public void clearEmbeddingMemory() {
@@ -55,6 +58,6 @@ public class GloveWordEmbedding implements WordEmbedding{
 
 	@Override
 	public int getDimension() {
-		return 64;
+		return dim;
 	}
 }

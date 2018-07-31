@@ -100,7 +100,7 @@ public class FastVersionMain {
 						.setModelFile(nnModelFile));
 			} 
 			GlobalNetworkParam gnp = new GlobalNetworkParam(optimizer, new GlobalNeuralNetworkParam(nets));
-			ECRFFeatureManager fa = new ECRFFeatureManager(gnp);
+			ECRFFeatureManager fa = new ECRFFeatureManager(gnp, null);
 			ECRFNetworkCompiler compiler = new ECRFNetworkCompiler(labels);
 			model = DiscriminativeNetworkModel.create(fa, compiler);
 			Function<Instance[], Metric> evalFunc = new Function<Instance[], Metric>() {

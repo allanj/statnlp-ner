@@ -15,7 +15,7 @@ import org.statnlp.hypergraph.decoding.Metric;
 public class ECRFEval {
 	
 	
-	public static boolean windows = false;
+	public static boolean windows = System.getProperty("os.name").startsWith("Windows") ? true : false;
 	public static String evalScript = "eval/conlleval.pl";  //remember to make the script runnable
 	
 	/**

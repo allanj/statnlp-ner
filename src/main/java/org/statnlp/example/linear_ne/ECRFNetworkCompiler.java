@@ -19,7 +19,7 @@ public class ECRFNetworkCompiler extends NetworkCompiler{
 	private static final long serialVersionUID = -2388666010977956073L;
 
 	public enum NodeType {Leaf, Node, Root};
-	public int _size;
+	public static final int _size = 150;
 	public BaseNetwork genericUnlabeledNetwork;
 	//0: should be start tag
 	//length -1: should be end tag;
@@ -28,11 +28,10 @@ public class ECRFNetworkCompiler extends NetworkCompiler{
 	private final boolean DEBUG = false;
 	
 	static {
-		NetworkIDMapper.setCapacity(new int[]{150, 50, 3});
+		NetworkIDMapper.setCapacity(new int[]{_size, 50, 3});
 	}
 	
 	public ECRFNetworkCompiler(List<String> labels){
-		this._size = 150;
 		this.labels = labels;
 		this.labelIndex = new HashMap<>(this.labels.size());
 		for (int l = 0; l < this.labels.size(); l++) {
@@ -85,6 +84,11 @@ public class ECRFNetworkCompiler extends NetworkCompiler{
 		long[] allNodes = genericUnlabeledNetwork.getAllNodes();
 		long root = toNode_root(inst.size());
 		int rootIdx = Arrays.binarySearch(allNodes, root);
+		if (rootIdx < 0) {
+			System.out.println(allNodes.length);
+			System.out.println(inst.getInput());
+			System.out.println(inst.size());
+		}
 		BaseNetwork lcrfNetwork = NetworkBuilder.quickBuild(networkId, inst, allNodes, genericUnlabeledNetwork.getAllChildren(), rootIdx+1, param, this);
 		return lcrfNetwork;
 	}

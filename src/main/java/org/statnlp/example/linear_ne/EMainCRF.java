@@ -24,20 +24,20 @@ import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
 
-public class EMain {
+public class EMainCRF {
 	
 	public static boolean DEBUG = false;
 
-	public static int trainNumber = 100;
-	public static int devNumber = 100;
-	public static int testNumber = 100;
+	public static int trainNumber = 5;
+	public static int devNumber = 1;
+	public static int testNumber = 5;
 	public static int numIteration = 100;
-	public static int numThreads = 5;
-	public static double l2 = 0;
+	public static int numThreads = 8;
+	public static double l2 = 0.0;
 	
 	public static String trainFile = "data/conll2003/train.txt";
 	public static String devFile = "data/conll2003/test.txt";
-	public static String testFile = "data/conll2003/test.txt";
+	public static String testFile = "data/conll2003/train.txt";
 	public static String nerOut = "data/conll2003/output/ner_out.txt";
 	public static String tmpOut = "data/conll2003/output/tmp_out.txt";
 	public static boolean saveModel = false;
@@ -45,7 +45,7 @@ public class EMain {
 	public static String modelFile = "models/linearNE.m";
 	public static String nnModelFile = "models/lstm.m";
 	public static int gpuId = -1;
-	public static String nnOptimizer = "sgdclip";
+	public static String nnOptimizer = "lbfgs";
 	public static String embedding = "glove";
 	public static int batchSize = 10;
 	public static OptimizerFactory optimizer = OptimizerFactory.getLBFGSFactory();
@@ -56,6 +56,7 @@ public class EMain {
 	public static double dropout = 0.5;
 	public static int hiddenSize = 100;
 	public static int embeddingSize = 100;
+	public static String embeddingFile = "F:\\data\\embedding\\glove.6B.100d.txt";
 	
 	public static void main(String[] args) throws IOException, InterruptedException, ClassNotFoundException{
 
@@ -74,20 +75,12 @@ public class EMain {
 		System.out.println("[Info] labels:" + labels.toString());
 		devInstances = reader.readData(devFile, false, devNumber);
 		
-		NetworkConfig.CACHE_FEATURES_DURING_TRAINING = true;
 		NetworkConfig.L2_REGULARIZATION_CONSTANT = l2;
 		NetworkConfig.NUM_THREADS = numThreads;
-		NetworkConfig.BATCH_SIZE = batchSize; //need to enable batch training first
-		NetworkConfig.RANDOM_BATCH = true;
-		NetworkConfig.PRINT_BATCH_OBJECTIVE = false;
-		NetworkConfig.FEATURE_TOUCH_TEST = true;
 		
-		//In order to compare with neural architecture for named entity recognition
-		if (DEBUG) {
-			NetworkConfig.RANDOM_INIT_WEIGHT = false;
-			NetworkConfig.FEATURE_INIT_WEIGHT = 0.1;
-		}
 		
+		NetworkConfig.USE_FEATURE_VALUE = true;
+		GloveWordEmbedding emb = new GloveWordEmbedding(embeddingFile);
 		NetworkModel model = null;
 		if (!readModel) {
 			List<NeuralNetworkCore> nets = new ArrayList<NeuralNetworkCore>();
@@ -99,7 +92,7 @@ public class EMain {
 						.setModelFile(nnModelFile));
 			} 
 			GlobalNetworkParam gnp = new GlobalNetworkParam(optimizer, new GlobalNeuralNetworkParam(nets));
-			ECRFFeatureManager fa = new ECRFFeatureManager(gnp, null);
+			ECRFFeatureManager fa = new ECRFFeatureManager(gnp, emb);
 			ECRFNetworkCompiler compiler = new ECRFNetworkCompiler(labels);
 			model = DiscriminativeNetworkModel.create(fa, compiler);
 			Function<Instance[], Metric> evalFunc = new Function<Instance[], Metric>() {
@@ -111,12 +104,14 @@ public class EMain {
 			if (!evalOnDev) devInstances = null;
 			model.train(trainInstances, numIteration, devInstances, evalFunc, evalFreq);
 		} else {
+			System.out.println("[Info] Loading model..");
 			ObjectInputStream ois = RAWF.objectReader(modelFile);
 			model = (NetworkModel)ois.readObject();
 			ois.close();
 		}
 		
 		if (saveModel) {
+			System.out.println("[Info] Saving the model...");
 			ObjectOutputStream oos =  RAWF.objectWriter(modelFile);
 			oos.writeObject(model);
 			oos.close();
@@ -140,7 +135,6 @@ public class EMain {
 		parser.addArgument("--dev_file").type(String.class).setDefault(devFile).help("development set");
 		parser.addArgument("--test_file").type(String.class).setDefault(testFile).help("test file");
 		parser.addArgument("-it", "--iter").type(Integer.class).setDefault(numIteration).help("number of iterations");
-		parser.addArgument("-w", "--windows").type(Boolean.class).setDefault(ECRFEval.windows).help("windows system for running eval script");
 		parser.addArgument("-b", "--batch").nargs("*").setDefault(new Object[] {NetworkConfig.USE_BATCH_TRAINING, batchSize}).help("batch training configuration");
 		parser.addArgument("-lc", "--lowercase").type(Boolean.class).setDefault(lowercase).help("use lowercase in lstm or not");
 		parser.addArgument("-optim", "--optimizer").type(String.class).choices("lbfgs", "sgdclip", "adam").setDefault("lbfgs").help("optimizer");
@@ -153,7 +147,6 @@ public class EMain {
 		parser.addArgument("--readModel", "-rm").type(Boolean.class).setDefault(readModel).help("read model");
 		parser.addArgument("-fe", "--fixEmbedding").type(Boolean.class).setDefault(fixEmbedding).help("fix embedding");
 		parser.addArgument("-do", "--dropout").type(Double.class).setDefault(dropout).help("dropout rate for the lstm");
-		parser.addArgument("-os", "--system").type(String.class).setDefault(NetworkConfig.OS).help("system for lua");
 		parser.addArgument("-es", "--embeddingSize").type(Integer.class).setDefault(embeddingSize).help("embedding size");
 		parser.addArgument("-hs", "--hiddenSize").type(Integer.class).setDefault(hiddenSize).help("hidden size");
 		Namespace ns = null;
@@ -171,7 +164,6 @@ public class EMain {
         devFile = ns.getString("dev_file");
         testFile = ns.getString("test_file");
         numIteration = ns.getInt("iter");
-        ECRFEval.windows = ns.getBoolean("windows");
         List<Object> batchOps = ns.getList("batch");
         NetworkConfig.USE_BATCH_TRAINING = batchOps.get(0) instanceof Boolean ? (boolean)batchOps.get(0)
         		: Boolean.valueOf((String)batchOps.get(0));
@@ -198,7 +190,6 @@ public class EMain {
         dropout = ns.getDouble("dropout");
         embeddingSize = ns.getInt("embeddingSize");
         hiddenSize = ns.getInt("hiddenSize");
-        NetworkConfig.OS = ns.getString("system");
         for (String key : ns.getAttrs().keySet()) {
         	System.err.println(key + "=" + ns.get(key));
         }

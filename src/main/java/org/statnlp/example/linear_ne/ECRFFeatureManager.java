@@ -17,10 +17,13 @@ public class ECRFFeatureManager extends FeatureManager {
 	private static final long serialVersionUID = 376931974939202432L;
 
 	public enum FeaType{
-		word, transition};
+		word, transition, bigram, trigram};
 	
-	public ECRFFeatureManager(GlobalNetworkParam param_g) {
+	private WordEmbedding emb;
+		
+	public ECRFFeatureManager(GlobalNetworkParam param_g, WordEmbedding emb) {
 		super(param_g);
+		this.emb = emb;
 	}
 	
 	@Override
@@ -51,17 +54,66 @@ public class ECRFFeatureManager extends FeatureManager {
 		}
 		
 		String word = inst.getInput().get(pos).getForm();
-		
+		fa = this.createFeatureArray(network, featureList);
+		FeatureArray curr = fa;
 		if(NetworkConfig.USE_NEURAL_FEATURES){
 			Object input = null;
 			String sentenceInput = sent.toString();
 			input = new SimpleImmutableEntry<String, Integer>(sentenceInput, pos);
 			this.addNeural(network, 0, parent_k, children_k_index, input, eId);
 		} else {
-			featureList.add(this._param_g.toFeature(network,FeaType.word.name(), entity, word));
+			int embDim = this.emb.getDimension();
+			//current word
+//			int[] fs1 = new int[embDim];
+//			for (int i = 0; i < embDim; i++) {
+//				fs1[i] = this._param_g.toFeature(network,FeaType.word.name() + "-"+ i, entity, "");
+//			}
+//			curr = curr.addNext(this.createFeatureArray(network, fs1, this.emb.getEmbedding(word)));
+			
+			int[] fs1 = new int[1];
+			fs1[0] = this._param_g.toFeature(network,FeaType.word.name(), entity, word);
+			curr = curr.addNext(this.createFeatureArray(network, fs1));
+			
+//			for (int p = pos - 1; p <= pos; p++) {
+//				String prevWord = p >= 0 ? sent.get(p).getForm() : "<start>";
+//				String currWord = (p + 1) >= sent.length() ? "<end>" : sent.get(p + 1).getForm();
+//				double[] pe = this.emb.getEmbedding(prevWord);
+//				double[] ce = this.emb.getEmbedding(currWord);
+//				int indicator = pos - p;
+//				int[] fsbg = new int[embDim * embDim];
+//				double[] fsbgval = new double[embDim * embDim];
+//				int k = 0;
+//				for (int i = 0; i < embDim; i++) {
+//					for (int j = 0; j < embDim; j++) {
+//						fsbg[k] = this._param_g.toFeature(network,FeaType.bigram.name() + "-"+indicator+":"+ i+":" + j, entity, "");
+//						fsbgval[k] = pe[i] * ce[j];
+//						k++;
+//					}
+//				}
+//				curr = curr.addNext(this.createFeatureArray(network, fsbg, fsbgval));
+//			}
+			
+//			String prevWord = pos -1 >= 0 ? sent.get(pos -1).getForm() : "<start>";
+//			String currWord = sent.get(pos).getForm();
+//			String nextWord = (pos + 1) >= sent.length() ? "<end>" : sent.get(pos+ 1).getForm();
+//			double[] pe = this.emb.getEmbedding(prevWord);
+//			double[] ce = this.emb.getEmbedding(currWord);
+//			double[] ne = this.emb.getEmbedding(nextWord);
+//			int[] fstg = new int[embDim * embDim * embDim];
+//			double[] fstgval = new double[embDim * embDim * embDim];
+//			int k = 0;
+//			for (int i = 0; i < embDim; i++) {
+//				for (int j = 0; j < embDim; j++) {
+//					for (int m = 0; m < embDim; m++) {
+//						fstg[k] = this._param_g.toFeature(network,FeaType.trigram.name() +":"+ i+":" + j+":"+k, entity, "");
+//						fstgval[k] = pe[i] * ce[j] * ne[m];
+//						k++;
+//					}
+//				}
+//			}
+//			curr = curr.addNext(this.createFeatureArray(network, fstg, fstgval));
 		}
 		
-		fa = this.createFeatureArray(network, featureList);
 		return fa;
 	}
 }
