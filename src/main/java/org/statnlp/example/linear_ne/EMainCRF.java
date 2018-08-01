@@ -33,14 +33,14 @@ public class EMainCRF {
 	public static int testNumber = 5;
 	public static int numIteration = 100;
 	public static int numThreads = 8;
-	public static double l2 = 0.0;
+	public static double l2 = 0.01;
 	
 	public static String trainFile = "data/conll2003/train.txt";
-	public static String devFile = "data/conll2003/test.txt";
+	public static String devFile = "data/conll2003/dev.txt";
 	public static String testFile = "data/conll2003/train.txt";
 	public static String nerOut = "data/conll2003/output/ner_out.txt";
 	public static String tmpOut = "data/conll2003/output/tmp_out.txt";
-	public static boolean saveModel = false;
+	public static boolean saveModel = true;
 	public static boolean readModel = false;
 	public static String modelFile = "models/linearNE.m";
 	public static String nnModelFile = "models/lstm.m";
@@ -56,7 +56,9 @@ public class EMainCRF {
 	public static double dropout = 0.5;
 	public static int hiddenSize = 100;
 	public static int embeddingSize = 100;
-	public static String embeddingFile = "F:\\data\\embedding\\glove.6B.100d.txt";
+	public static String embeddingFile = "data/glove.6B.100d.txt";
+	public static boolean useEmb = true;
+	public static boolean useDiscrete = false;
 	
 	public static void main(String[] args) throws IOException, InterruptedException, ClassNotFoundException{
 
@@ -74,13 +76,20 @@ public class EMainCRF {
 		trainInstances = reader.readData(trainFile, true, trainNumber);
 		System.out.println("[Info] labels:" + labels.toString());
 		devInstances = reader.readData(devFile, false, devNumber);
+		testInstances = reader.readData(testFile, false, testNumber);
 		
 		NetworkConfig.L2_REGULARIZATION_CONSTANT = l2;
 		NetworkConfig.NUM_THREADS = numThreads;
-		
+		NetworkConfig.AVOID_DUPLICATE_FEATURES = true;
 		
 		NetworkConfig.USE_FEATURE_VALUE = true;
-		GloveWordEmbedding emb = new GloveWordEmbedding(embeddingFile);
+		GloveWordEmbedding emb = null;
+		if (useEmb) {
+			emb = new GloveWordEmbedding(embeddingFile, false);
+			emb.collectBigramLT(trainInstances, true);
+			emb.collectBigramLT(testInstances, true);
+			emb.normalizeEmbedding();
+		}
 		NetworkModel model = null;
 		if (!readModel) {
 			List<NeuralNetworkCore> nets = new ArrayList<NeuralNetworkCore>();
@@ -92,7 +101,7 @@ public class EMainCRF {
 						.setModelFile(nnModelFile));
 			} 
 			GlobalNetworkParam gnp = new GlobalNetworkParam(optimizer, new GlobalNeuralNetworkParam(nets));
-			ECRFFeatureManager fa = new ECRFFeatureManager(gnp, emb);
+			ECRFFeatureManager fa = new ECRFFeatureManager(gnp, emb, useDiscrete);
 			ECRFNetworkCompiler compiler = new ECRFNetworkCompiler(labels);
 			model = DiscriminativeNetworkModel.create(fa, compiler);
 			Function<Instance[], Metric> evalFunc = new Function<Instance[], Metric>() {
@@ -107,6 +116,7 @@ public class EMainCRF {
 			System.out.println("[Info] Loading model..");
 			ObjectInputStream ois = RAWF.objectReader(modelFile);
 			model = (NetworkModel)ois.readObject();
+			((ECRFFeatureManager)model.getFeatureManager()).setEmb(emb);
 			ois.close();
 		}
 		
@@ -116,7 +126,7 @@ public class EMainCRF {
 			oos.writeObject(model);
 			oos.close();
 		}
-		testInstances = reader.readData(testFile, false, testNumber);
+		
 		if (NetworkConfig.USE_NEURAL_FEATURES) {
 			reader.preprocess(testInstances, lowercase, false);
 		}
@@ -149,6 +159,8 @@ public class EMainCRF {
 		parser.addArgument("-do", "--dropout").type(Double.class).setDefault(dropout).help("dropout rate for the lstm");
 		parser.addArgument("-es", "--embeddingSize").type(Integer.class).setDefault(embeddingSize).help("embedding size");
 		parser.addArgument("-hs", "--hiddenSize").type(Integer.class).setDefault(hiddenSize).help("hidden size");
+		parser.addArgument("--useEmb").type(Boolean.class).setDefault(useEmb).help("use embedding feature value");
+		parser.addArgument("--useDiscrete").type(Boolean.class).setDefault(useDiscrete).help("use discrete as feature value");
 		Namespace ns = null;
         try {
             ns = parser.parseArgs(args);
@@ -190,6 +202,8 @@ public class EMainCRF {
         dropout = ns.getDouble("dropout");
         embeddingSize = ns.getInt("embeddingSize");
         hiddenSize = ns.getInt("hiddenSize");
+        useEmb = ns.getBoolean("useEmb");
+        useDiscrete = ns.getBoolean("useDiscrete");
         for (String key : ns.getAttrs().keySet()) {
         	System.err.println(key + "=" + ns.get(key));
         }
