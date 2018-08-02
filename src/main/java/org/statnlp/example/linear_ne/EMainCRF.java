@@ -37,7 +37,7 @@ public class EMainCRF {
 	
 	public static String trainFile = "data/conll2003/train.txt";
 	public static String devFile = "data/conll2003/dev.txt";
-	public static String testFile = "data/conll2003/train.txt";
+	public static String testFile = "data/conll2003/test.txt";
 	public static String nerOut = "data/conll2003/output/ner_out.txt";
 	public static String tmpOut = "data/conll2003/output/tmp_out.txt";
 	public static boolean saveModel = true;
