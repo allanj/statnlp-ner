@@ -59,6 +59,8 @@ public class EMainCRF {
 	public static String embeddingFile = "data/glove.6B.100d.txt";
 	public static boolean useEmb = true;
 	public static boolean useDiscrete = false;
+	public static boolean useBigram = true;
+	public static int wordHalfWindow = 1;
 	
 	public static void main(String[] args) throws IOException, InterruptedException, ClassNotFoundException{
 
@@ -101,7 +103,7 @@ public class EMainCRF {
 						.setModelFile(nnModelFile));
 			} 
 			GlobalNetworkParam gnp = new GlobalNetworkParam(optimizer, new GlobalNeuralNetworkParam(nets));
-			ECRFFeatureManager fa = new ECRFFeatureManager(gnp, emb, useDiscrete);
+			ECRFFeatureManager fa = new ECRFFeatureManager(gnp, emb, useDiscrete, useBigram, wordHalfWindow);
 			ECRFNetworkCompiler compiler = new ECRFNetworkCompiler(labels);
 			model = DiscriminativeNetworkModel.create(fa, compiler);
 			Function<Instance[], Metric> evalFunc = new Function<Instance[], Metric>() {
@@ -161,6 +163,8 @@ public class EMainCRF {
 		parser.addArgument("-hs", "--hiddenSize").type(Integer.class).setDefault(hiddenSize).help("hidden size");
 		parser.addArgument("--useEmb").type(Boolean.class).setDefault(useEmb).help("use embedding feature value");
 		parser.addArgument("--useDiscrete").type(Boolean.class).setDefault(useDiscrete).help("use discrete as feature value");
+		parser.addArgument("--useBigram").type(Boolean.class).setDefault(useBigram).help("use bigram features");
+		parser.addArgument("--wordHalfWindow").type(Integer.class).setDefault(wordHalfWindow).help("word half window size");
 		Namespace ns = null;
         try {
             ns = parser.parseArgs(args);
@@ -204,6 +208,8 @@ public class EMainCRF {
         hiddenSize = ns.getInt("hiddenSize");
         useEmb = ns.getBoolean("useEmb");
         useDiscrete = ns.getBoolean("useDiscrete");
+        useBigram = ns.getBoolean("useBigram");
+        wordHalfWindow = ns.getInt("wordHalfWindow");
         for (String key : ns.getAttrs().keySet()) {
         	System.err.println(key + "=" + ns.get(key));
         }
