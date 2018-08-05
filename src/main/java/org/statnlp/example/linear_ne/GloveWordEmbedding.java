@@ -2,6 +2,7 @@ package org.statnlp.example.linear_ne;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -14,9 +15,12 @@ public class GloveWordEmbedding implements WordEmbedding{
 
 	private Map<String, double[]> lookupTable;
 	
-	private Map<String, double[]> bigramLookupTable;
+	protected Map<String, double[]> bigramLookupTable;
+	protected Map<String, double[]> trigramLookupTable;
 	
 	private static final int  dim = 100;
+	
+	public int bigramDim;
 	
 	private boolean normalized = true;
 	
@@ -54,6 +58,36 @@ public class GloveWordEmbedding implements WordEmbedding{
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+	}
+	
+	public void readBigramEmbedding(String file, int dimension) {
+		this.bigramLookupTable = new HashMap<>();
+		this.bigramDim = dimension;
+		BufferedReader br;
+		try {
+			br = RAWF.reader(file);
+			String line = null;
+			while((line = br.readLine()) != null) {
+				String[] vals = line.split(" ");
+				String word = vals[0] + " " + vals[1];
+				if (vals.length != 102) throw new RuntimeException("not 102?");
+				double[] emb = new double[dimension];
+				for (int i = 0; i < emb.length; i++) {
+					emb[i] = Double.valueOf(vals[i + 2]);
+				}
+				if (this.normalized) {
+					double norm = MathsVector.norm(emb);
+					for (int i = 0; i < emb.length; i++) {
+						emb[i] /= norm;
+					}
+				}
+				this.bigramLookupTable.put(word, emb);
+			}
+			br.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		System.out.println("[info] finishing bigram embedding..");
 	}
 	
 	public void normalizeEmbedding() {
@@ -116,5 +150,54 @@ public class GloveWordEmbedding implements WordEmbedding{
 			}
 		}
 		System.out.println("[Info] Current size of bigram embedding: " + this.bigramLookupTable.size());
+	}
+	
+	public void writeEmbToFile(Map<String, double[]> emb, String file) throws IOException {
+		PrintWriter pw = RAWF.writer(file);
+		for (String key : emb.keySet()) {
+			double[] embedding = emb.get(key);
+			pw.write(key);
+			for (int i = 0; i < embedding.length; i++) {
+				pw.write(" " + embedding[i]);
+			}
+			pw.println();
+		}
+		pw.close();
+	}
+
+	public void collectTrigramLT(Instance[] insts, boolean normalized) {
+		if (this.trigramLookupTable == null) this.trigramLookupTable = new HashMap<>();
+		for (Instance in : insts) {
+			EInst inst = (EInst)in;
+			Sentence sent = inst.getInput();
+			for (int i = 0; i <= sent.length() + 1; i++) {
+				String llw = i-2 >= 0 ? sent.get(i-2).getForm().toLowerCase(): "unk";
+				String prevWord = i-1 >= 0 && i -1 < sent.length() ? sent.get(i-1).getForm().toLowerCase(): "unk";
+				String currWord = i < sent.length() ? sent.get(i).getForm().toLowerCase() : "unk";
+				String trigram = llw + " " + prevWord + " " + currWord;
+				if (!this.trigramLookupTable.containsKey(trigram)) {
+					double[] ppe = this.getEmbedding(llw);
+					double[] pe = this.getEmbedding(prevWord);
+					double[] ce = this.getEmbedding(currWord);
+					double[] tg = new double[ppe.length * pe.length * ce.length];
+					int k = 0;
+					for (int m = 0; m < ppe.length; m++) {
+						for (int n = 0; n < pe.length; n++) {
+							for(int l =0; l < ce.length; l++) {
+								tg[k++] = ppe[m] * pe[n] * ce[l];
+							}
+						}
+					}
+					if (normalized) {
+						double norm = MathsVector.norm(tg);
+						for (int l = 0; l < tg.length; l++) {
+							tg[i] /= norm;
+						}
+					}
+					this.trigramLookupTable.put(trigram, tg);
+				}
+			}
+		}
+		System.out.println("[Info] Current size of trigram embedding: " + this.trigramLookupTable.size());
 	}
 }

@@ -94,17 +94,25 @@ public class ECRFFeatureManager extends FeatureManager {
 			
 			if (this.useBigram) {
 				for (int p = pos - wordHalfWindow; p < pos + wordHalfWindow; p++) {
-					String prevWord = p >= 0 ? sent.get(p).getForm() : "unk";
-					String currWord = (p + 1) >= sent.length() ? "unk" : sent.get(p + 1).getForm();
+					String prevWord = p >= 0 && p < sent.length() ? sent.get(p).getForm() : "unk";
+					String currWord = ((p + 1) >= sent.length() || (p+1<0)) ? "unk" : sent.get(p + 1).getForm();
 					String bigram = prevWord.toLowerCase() + " " + currWord.toLowerCase();
 					int indicator = pos - p;
+//					if (this.emb != null) {
+//						int[] fsbg = new int[this.emb.bigramDim];
+//						int k = 0;
+//						for (int i = 0; i < embDim; i++) {
+//							for (int j = 0; j < embDim; j++) {
+//								fsbg[k++] = this._param_g.toFeature(network,FeaType.bigram.name() + "-"+indicator+":"+ i+":" + j, entity, "");
+//							}
+//						}
+//						curr = curr.addNext(this.createFeatureArray(network, fsbg, this.emb.getBigramEmbedding(bigram)));
+//					}
 					if (this.emb != null) {
-						int[] fsbg = new int[embDim * embDim];
+						int[] fsbg = new int[this.emb.bigramDim];
 						int k = 0;
-						for (int i = 0; i < embDim; i++) {
-							for (int j = 0; j < embDim; j++) {
-								fsbg[k++] = this._param_g.toFeature(network,FeaType.bigram.name() + "-"+indicator+":"+ i+":" + j, entity, "");
-							}
+						for (int i = 0; i < this.emb.bigramDim; i++) {
+							fsbg[k++] = this._param_g.toFeature(network,FeaType.bigram.name() + "-"+indicator+":"+ i, entity, "");
 						}
 						curr = curr.addNext(this.createFeatureArray(network, fsbg, this.emb.getBigramEmbedding(bigram)));
 					}
