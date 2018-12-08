@@ -88,17 +88,18 @@ public class EMainCRF {
 		NetworkConfig.USE_FEATURE_VALUE = true;
 		GloveWordEmbedding emb = null;
 		if (useEmb) {
-			emb = new GloveWordEmbedding(embeddingFile, false);
-			emb.collectTrigramLT(trainInstances, false);
-			emb.collectTrigramLT(testInstances, false);
-			emb.writeEmbToFile(emb.trigramLookupTable, "/data/allan/trigramEmb.txt");
-			System.exit(0);
+			emb = new GloveWordEmbedding(embeddingFile, true);
+//			emb.collectTrigramLT(trainInstances, false);
+//			emb.collectTrigramLT(testInstances, false);
+//			emb.writeEmbToFile(emb.trigramLookupTable, "/data/allan/trigramEmb.txt");
+//			System.exit(0);
 //			emb.collectBigramLT(trainInstances, true);
 //			emb.collectBigramLT(testInstances, true);
 //			emb.writeEmbToFile(emb.bigramLookupTable, "data/bigramEmb.txt");
 //			emb.normalizeEmbedding();
 //			emb = new GloveWordEmbedding(embeddingFile, true);
-//			emb.readBigramEmbedding(bigramEmbeddingFile, 100);
+			if (useBigram)
+				emb.readBigramEmbedding(bigramEmbeddingFile, 100);
 		}
 		NetworkModel model = null;
 		if (!readModel) {
