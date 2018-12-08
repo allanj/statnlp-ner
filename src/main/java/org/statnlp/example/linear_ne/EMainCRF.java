@@ -57,11 +57,12 @@ public class EMainCRF {
 	public static int hiddenSize = 100;
 	public static int embeddingSize = 100;
 	public static String embeddingFile = "data/glove.6B.100d.txt";
-	public static String bigramEmbeddingFile = "data/bigramPCA.txt";
+	public static String bigramEmbeddingFile = "data/bigramEmb.txt";
 	public static boolean useEmb = true;
 	public static boolean useDiscrete = false;
 	public static boolean useBigram = true;
 	public static int wordHalfWindow = 1;
+	public static double curr_ratio = 0.7;
 	
 	public static void main(String[] args) throws IOException, InterruptedException, ClassNotFoundException{
 
@@ -88,16 +89,16 @@ public class EMainCRF {
 		NetworkConfig.USE_FEATURE_VALUE = true;
 		GloveWordEmbedding emb = null;
 		if (useEmb) {
-			emb = new GloveWordEmbedding(embeddingFile, false);
-			emb.collectTrigramLT(trainInstances, false);
-			emb.collectTrigramLT(testInstances, false);
-			emb.writeEmbToFile(emb.trigramLookupTable, "/data/allan/trigramEmb.txt");
-			System.exit(0);
+//			emb = new GloveWordEmbedding(embeddingFile, false);
+//			emb.collectTrigramLT(trainInstances, true);
+//			emb.collectTrigramLT(testInstances, true);
+//			emb.writeEmbToFile(emb.trigramLookupTable, "data/trigramEmb.txt");
 //			emb.collectBigramLT(trainInstances, true);
 //			emb.collectBigramLT(testInstances, true);
 //			emb.writeEmbToFile(emb.bigramLookupTable, "data/bigramEmb.txt");
+//			System.exit(0);
 //			emb.normalizeEmbedding();
-//			emb = new GloveWordEmbedding(embeddingFile, true);
+			emb = new GloveWordEmbedding(embeddingFile, true);
 //			emb.readBigramEmbedding(bigramEmbeddingFile, 100);
 		}
 		NetworkModel model = null;
@@ -111,7 +112,7 @@ public class EMainCRF {
 						.setModelFile(nnModelFile));
 			} 
 			GlobalNetworkParam gnp = new GlobalNetworkParam(optimizer, new GlobalNeuralNetworkParam(nets));
-			ECRFFeatureManager fa = new ECRFFeatureManager(gnp, emb, useDiscrete, useBigram, wordHalfWindow);
+			ECRFFeatureManager fa = new ECRFFeatureManager(gnp, emb, useDiscrete, useBigram, wordHalfWindow, curr_ratio);
 			ECRFNetworkCompiler compiler = new ECRFNetworkCompiler(labels);
 			model = DiscriminativeNetworkModel.create(fa, compiler);
 			Function<Instance[], Metric> evalFunc = new Function<Instance[], Metric>() {
@@ -173,6 +174,7 @@ public class EMainCRF {
 		parser.addArgument("--useDiscrete").type(Boolean.class).setDefault(useDiscrete).help("use discrete as feature value");
 		parser.addArgument("--useBigram").type(Boolean.class).setDefault(useBigram).help("use bigram features");
 		parser.addArgument("--wordHalfWindow").type(Integer.class).setDefault(wordHalfWindow).help("word half window size");
+		parser.addArgument("-cr", "--curr_ratio").type(Double.class).setDefault(curr_ratio).help("curr pos emb ratio");
 		Namespace ns = null;
         try {
             ns = parser.parseArgs(args);
@@ -218,6 +220,7 @@ public class EMainCRF {
         useDiscrete = ns.getBoolean("useDiscrete");
         useBigram = ns.getBoolean("useBigram");
         wordHalfWindow = ns.getInt("wordHalfWindow");
+        curr_ratio = ns.getDouble("curr_ratio");
         for (String key : ns.getAttrs().keySet()) {
         	System.err.println(key + "=" + ns.get(key));
         }

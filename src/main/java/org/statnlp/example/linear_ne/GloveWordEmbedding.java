@@ -122,6 +122,33 @@ public class GloveWordEmbedding implements WordEmbedding{
 
 	public void collectBigramLT(Instance[] insts, boolean normalized) {
 		if (this.bigramLookupTable == null) this.bigramLookupTable = new HashMap<>();
+//		for (Instance in : insts) {
+//			EInst inst = (EInst)in;
+//			Sentence sent = inst.getInput();
+//			for (int i = 0; i <= sent.length(); i++) {
+//				String prevWord = i-1 >= 0 ? sent.get(i-1).getForm().toLowerCase(): "unk";
+//				String currWord = i < sent.length() ? sent.get(i).getForm().toLowerCase() : "unk";
+//				String bigram = prevWord + " " + currWord;
+//				if (!this.bigramLookupTable.containsKey(bigram)) {
+//					double[] pe = this.getEmbedding(prevWord);
+//					double[] ce = this.getEmbedding(currWord);
+//					double[] bg = new double[pe.length * ce.length];
+//					int k = 0;
+//					for (int m = 0; m < pe.length; m++) {
+//						for (int n = 0; n < ce.length; n++) {
+//							bg[k++] = pe[m] * ce[n];
+//						}
+//					}
+//					if (normalized) {
+//						double norm = MathsVector.norm(bg);
+//						for (int l = 0; l < bg.length; l++) {
+//							bg[l] /= norm;
+//						}
+//					}
+//					this.bigramLookupTable.put(bigram, bg);
+//				}
+//			}
+//		}
 		for (Instance in : insts) {
 			EInst inst = (EInst)in;
 			Sentence sent = inst.getInput();
@@ -132,17 +159,14 @@ public class GloveWordEmbedding implements WordEmbedding{
 				if (!this.bigramLookupTable.containsKey(bigram)) {
 					double[] pe = this.getEmbedding(prevWord);
 					double[] ce = this.getEmbedding(currWord);
-					double[] bg = new double[pe.length * ce.length];
-					int k = 0;
-					for (int m = 0; m < pe.length; m++) {
-						for (int n = 0; n < ce.length; n++) {
-							bg[k++] = pe[m] * ce[n];
-						}
+					double[] bg = new double[dim];
+					for (int n = 0; n < dim; n++) {
+						bg[n] = pe[n] + ce[n];
 					}
 					if (normalized) {
 						double norm = MathsVector.norm(bg);
 						for (int l = 0; l < bg.length; l++) {
-							bg[i] /= norm;
+							bg[l] /= norm;
 						}
 					}
 					this.bigramLookupTable.put(bigram, bg);
@@ -167,6 +191,37 @@ public class GloveWordEmbedding implements WordEmbedding{
 
 	public void collectTrigramLT(Instance[] insts, boolean normalized) {
 		if (this.trigramLookupTable == null) this.trigramLookupTable = new HashMap<>();
+//		for (Instance in : insts) {
+//			EInst inst = (EInst)in;
+//			Sentence sent = inst.getInput();
+//			for (int i = 0; i <= sent.length() + 1; i++) {
+//				String llw = i-2 >= 0 ? sent.get(i-2).getForm().toLowerCase(): "unk";
+//				String prevWord = i-1 >= 0 && i -1 < sent.length() ? sent.get(i-1).getForm().toLowerCase(): "unk";
+//				String currWord = i < sent.length() ? sent.get(i).getForm().toLowerCase() : "unk";
+//				String trigram = llw + " " + prevWord + " " + currWord;
+//				if (!this.trigramLookupTable.containsKey(trigram)) {
+//					double[] ppe = this.getEmbedding(llw);
+//					double[] pe = this.getEmbedding(prevWord);
+//					double[] ce = this.getEmbedding(currWord);
+//					double[] tg = new double[ppe.length * pe.length * ce.length];
+//					int k = 0;
+//					for (int m = 0; m < ppe.length; m++) {
+//						for (int n = 0; n < pe.length; n++) {
+//							for(int l =0; l < ce.length; l++) {
+//								tg[k++] = ppe[m] * pe[n] * ce[l];
+//							}
+//						}
+//					}
+//					if (normalized) {
+//						double norm = MathsVector.norm(tg);
+//						for (int l = 0; l < tg.length; l++) {
+//							tg[l] /= norm;
+//						}
+//					}
+//					this.trigramLookupTable.put(trigram, tg);
+//				}
+//			}
+//		}
 		for (Instance in : insts) {
 			EInst inst = (EInst)in;
 			Sentence sent = inst.getInput();
@@ -179,19 +234,14 @@ public class GloveWordEmbedding implements WordEmbedding{
 					double[] ppe = this.getEmbedding(llw);
 					double[] pe = this.getEmbedding(prevWord);
 					double[] ce = this.getEmbedding(currWord);
-					double[] tg = new double[ppe.length * pe.length * ce.length];
-					int k = 0;
-					for (int m = 0; m < ppe.length; m++) {
-						for (int n = 0; n < pe.length; n++) {
-							for(int l =0; l < ce.length; l++) {
-								tg[k++] = ppe[m] * pe[n] * ce[l];
-							}
-						}
+					double[] tg = new double[dim];
+					for (int m = 0; m < dim; m++) {
+						tg[m] = ppe[m] + pe[m] + ce[m];
 					}
 					if (normalized) {
 						double norm = MathsVector.norm(tg);
 						for (int l = 0; l < tg.length; l++) {
-							tg[i] /= norm;
+							tg[l] /= norm;
 						}
 					}
 					this.trigramLookupTable.put(trigram, tg);
