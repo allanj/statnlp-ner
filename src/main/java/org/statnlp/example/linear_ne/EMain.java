@@ -3,21 +3,23 @@ package org.statnlp.example.linear_ne;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
 import org.statnlp.commons.io.RAWF;
-import org.statnlp.commons.ml.opt.GradientDescentOptimizer.BestParamCriteria;
 import org.statnlp.commons.ml.opt.OptimizerFactory;
 import org.statnlp.commons.types.Instance;
+import org.statnlp.example.linear_ne.character.CharacterFeatureManager;
+import org.statnlp.example.linear_ne.character.CharacterNetworkCompiler;
 import org.statnlp.hypergraph.DiscriminativeNetworkModel;
+import org.statnlp.hypergraph.FeatureManager;
 import org.statnlp.hypergraph.GlobalNetworkParam;
+import org.statnlp.hypergraph.NetworkCompiler;
 import org.statnlp.hypergraph.NetworkConfig;
 import org.statnlp.hypergraph.NetworkModel;
 import org.statnlp.hypergraph.decoding.Metric;
-import org.statnlp.hypergraph.neural.GlobalNeuralNetworkParam;
-import org.statnlp.hypergraph.neural.NeuralNetworkCore;
 
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
@@ -28,40 +30,41 @@ public class EMain {
 	
 	public static boolean DEBUG = false;
 
-	public static int trainNumber = 100;
-	public static int devNumber = 100;
-	public static int testNumber = 100;
-	public static int numIteration = 100;
-	public static int numThreads = 5;
-	public static double l2 = 0;
+	public static int trainNumber = 500;
+	public static int devNumber = 500;
+	public static int testNumber = 500;
+	public static int numIteration = 4000;
+	public static int numThreads = 8;
+	public static double l2 = 0.01;
 	
-	public static String trainFile = "data/conll2003/train.txt";
-	public static String devFile = "data/conll2003/test.txt";
-	public static String testFile = "data/conll2003/test.txt";
-	public static String nerOut = "data/conll2003/output/ner_out.txt";
-	public static String tmpOut = "data/conll2003/output/tmp_out.txt";
+	public static String dataset = "conll2003";
 	public static boolean saveModel = false;
 	public static boolean readModel = false;
-	public static String modelFile = "models/linearNE.m";
-	public static String nnModelFile = "models/lstm.m";
-	public static int gpuId = -1;
-	public static String nnOptimizer = "sgdclip";
-	public static String embedding = "glove";
-	public static int batchSize = 10;
 	public static OptimizerFactory optimizer = OptimizerFactory.getLBFGSFactory();
 	public static boolean evalOnDev = false;
 	public static int evalFreq = 1000;
-	public static boolean lowercase = true;
-	public static boolean fixEmbedding = false;
-	public static double dropout = 0.5;
-	public static int hiddenSize = 100;
-	public static int embeddingSize = 100;
+	public static boolean useCharFeats = false;
+	public static enum Model_Type {
+		linear,
+		latent_character
+	};
+	public static Model_Type current_model = Model_Type.latent_character;
 	
 	public static void main(String[] args) throws IOException, InterruptedException, ClassNotFoundException{
 
 		processArgs(args);
+		
+		String trainFile = "data/"+dataset+"/train.txt";
+		String devFile = "data/"+dataset+"/dev.txt";
+		String testFile = "data/"+dataset+"/test.txt";
+		String nerOut = "data/"+dataset+"."+current_model.name()+".prefix_"+useCharFeats+".results.txt";
+		String nerDetailout = "data/"+dataset+"."+current_model.name()+".prefix_"+useCharFeats+".detail.results.txt";
+		String tmpOut = "data/"+dataset+"/"+current_model.name()+".prefix_"+useCharFeats+".tmp_out.txt";
+		String modelFile = "models/"+dataset+"."+current_model.name()+".prefix_"+useCharFeats+".m";
+		
 		System.err.println("[Info] trainingFile: "+trainFile);
 		System.err.println("[Info] testFile: "+testFile);
+		
 		System.err.println("[Info] nerOut: "+nerOut);
 		
 		EInst[] trainInstances = null;
@@ -69,18 +72,15 @@ public class EMain {
 		EInst[] testInstances = null;
 		List<String> labels = new ArrayList<>();
 		
-		EReader reader = new EReader(labels);
+		
+		
+		EReader reader = new EReader(labels, current_model == Model_Type.latent_character, dataset);
 		trainInstances = reader.readData(trainFile, true, trainNumber);
 		System.out.println("[Info] labels:" + labels.toString());
 		devInstances = reader.readData(devFile, false, devNumber);
 		
-		NetworkConfig.CACHE_FEATURES_DURING_TRAINING = true;
 		NetworkConfig.L2_REGULARIZATION_CONSTANT = l2;
 		NetworkConfig.NUM_THREADS = numThreads;
-		NetworkConfig.BATCH_SIZE = batchSize; //need to enable batch training first
-		NetworkConfig.RANDOM_BATCH = true;
-		NetworkConfig.PRINT_BATCH_OBJECTIVE = false;
-		NetworkConfig.FEATURE_TOUCH_TEST = true;
 		
 		//In order to compare with neural architecture for named entity recognition
 		if (DEBUG) {
@@ -90,17 +90,11 @@ public class EMain {
 		
 		NetworkModel model = null;
 		if (!readModel) {
-			List<NeuralNetworkCore> nets = new ArrayList<NeuralNetworkCore>();
-			if(NetworkConfig.USE_NEURAL_FEATURES){
-				reader.preprocess(trainInstances, lowercase, true);
-				reader.preprocess(devInstances, lowercase, false);
-				nets.add(new BRNN("SimpleBiLSTM", labels.size(), gpuId, embedding,
-						fixEmbedding, dropout, hiddenSize, embeddingSize)
-						.setModelFile(nnModelFile));
-			} 
-			GlobalNetworkParam gnp = new GlobalNetworkParam(optimizer, new GlobalNeuralNetworkParam(nets));
-			ECRFFeatureManager fa = new ECRFFeatureManager(gnp, null, false);
-			ECRFNetworkCompiler compiler = new ECRFNetworkCompiler(labels);
+			GlobalNetworkParam gnp = new GlobalNetworkParam(optimizer);
+			FeatureManager fa =  current_model == Model_Type.linear ? new ECRFFeatureManager(gnp, useCharFeats) :
+				new CharacterFeatureManager(gnp, labels, useCharFeats);
+			NetworkCompiler compiler = current_model == Model_Type.linear ? new ECRFNetworkCompiler(labels) :
+				new CharacterNetworkCompiler(labels);
 			model = DiscriminativeNetworkModel.create(fa, compiler);
 			Function<Instance[], Metric> evalFunc = new Function<Instance[], Metric>() {
 				@Override
@@ -122,11 +116,25 @@ public class EMain {
 			oos.close();
 		}
 		testInstances = reader.readData(testFile, false, testNumber);
-		if (NetworkConfig.USE_NEURAL_FEATURES) {
-			reader.preprocess(testInstances, lowercase, false);
-		}
 		Instance[] predictions = model.test(testInstances);
 		ECRFEval.evalNER(predictions, nerOut);
+		//print details
+		if (current_model == Model_Type.latent_character) {
+			PrintWriter pw = RAWF.writer(nerDetailout);
+			for(Instance prediction : predictions) {
+				EInst inst = (EInst)prediction;
+				List<List<String>> details = inst.detailedCharacterPrediction;
+				for (int i = 0; i < details.size(); i++) {
+					pw.print(inst.getInput().get(i).getForm() + " " + inst.prediction.get(i) + " CHARS:" );
+					for (int j =0; j < details.get(i).size(); j++) {
+						pw.print(" " + details.get(i).get(j));
+					}
+					pw.println();
+				}
+				pw.println();
+			}
+			pw.close();
+		}
 	}
 	
 	public static void processArgs(String[] args){
@@ -136,26 +144,17 @@ public class EMain {
 		parser.addArgument("--train_num").type(Integer.class).setDefault(trainNumber).help("number of training data");
 		parser.addArgument("--dev_num").type(Integer.class).setDefault(devNumber).help("number of validation data");
 		parser.addArgument("--test_num").type(Integer.class).setDefault(testNumber).help("number of test data");
-		parser.addArgument("--train_file").type(String.class).setDefault(trainFile).help("training file");
-		parser.addArgument("--dev_file").type(String.class).setDefault(devFile).help("development set");
-		parser.addArgument("--test_file").type(String.class).setDefault(testFile).help("test file");
+		parser.addArgument("--dataset").type(String.class).setDefault(dataset).help("training file");
 		parser.addArgument("-it", "--iter").type(Integer.class).setDefault(numIteration).help("number of iterations");
 		parser.addArgument("-w", "--windows").type(Boolean.class).setDefault(ECRFEval.windows).help("windows system for running eval script");
-		parser.addArgument("-b", "--batch").nargs("*").setDefault(new Object[] {NetworkConfig.USE_BATCH_TRAINING, batchSize}).help("batch training configuration");
-		parser.addArgument("-lc", "--lowercase").type(Boolean.class).setDefault(lowercase).help("use lowercase in lstm or not");
-		parser.addArgument("-optim", "--optimizer").type(String.class).choices("lbfgs", "sgdclip", "adam").setDefault("lbfgs").help("optimizer");
-		parser.addArgument("-emb", "--embedding").type(String.class).choices("glove", "google", "random", "turian").setDefault(embedding).help("embedding to use");
-		parser.addArgument("-gi", "--gpuid").type(Integer.class).setDefault(gpuId).help("gpuid");
 		parser.addArgument("-l2", "--l2val").type(Double.class).setDefault(l2).help("L2 regularization term");
 		parser.addArgument("-ed", "--evalDev").nargs("*").setDefault(new Object[] {evalOnDev, evalFreq}).help("evaluate on dev set");
 		parser.addArgument("-lstm", "--useLSTM").type(Boolean.class).setDefault(NetworkConfig.USE_NEURAL_FEATURES).help("use lstm features");
 		parser.addArgument("--saveModel", "-sm").type(Boolean.class).setDefault(saveModel).help("save model");
 		parser.addArgument("--readModel", "-rm").type(Boolean.class).setDefault(readModel).help("read model");
-		parser.addArgument("-fe", "--fixEmbedding").type(Boolean.class).setDefault(fixEmbedding).help("fix embedding");
-		parser.addArgument("-do", "--dropout").type(Double.class).setDefault(dropout).help("dropout rate for the lstm");
 		parser.addArgument("-os", "--system").type(String.class).setDefault(NetworkConfig.OS).help("system for lua");
-		parser.addArgument("-es", "--embeddingSize").type(Integer.class).setDefault(embeddingSize).help("embedding size");
-		parser.addArgument("-hs", "--hiddenSize").type(Integer.class).setDefault(hiddenSize).help("hidden size");
+		parser.addArgument("-ucf", "--useCharFeats").type(Boolean.class).setDefault(useCharFeats).help("use prefix/suffix features");
+		parser.addArgument("-mt", "--modelType").type(Model_Type.class).setDefault(current_model).help("Model type to use: linear or latent_character");
 		Namespace ns = null;
         try {
             ns = parser.parseArgs(args);
@@ -167,38 +166,17 @@ public class EMain {
         trainNumber = ns.getInt("train_num");
         devNumber = ns.getInt("dev_num");
         testNumber = ns.getInt("test_num");
-        trainFile = ns.getString("train_file");
-        devFile = ns.getString("dev_file");
-        testFile = ns.getString("test_file");
+        dataset = ns.getString("dataset");
         numIteration = ns.getInt("iter");
         ECRFEval.windows = ns.getBoolean("windows");
-        List<Object> batchOps = ns.getList("batch");
-        NetworkConfig.USE_BATCH_TRAINING = batchOps.get(0) instanceof Boolean ? (boolean)batchOps.get(0)
-        		: Boolean.valueOf((String)batchOps.get(0));
-        batchSize = batchOps.get(1) instanceof Integer ? (int)batchOps.get(1) 
-        		:Integer.valueOf((String)batchOps.get(1));
-        lowercase = ns.getBoolean("lowercase");
-        String optim = ns.getString("optimizer");
-        switch (optim) {
-        	case "lbfgs": optimizer = OptimizerFactory.getLBFGSFactory(); break;
-        	case "sgdclip": optimizer = OptimizerFactory.getGradientDescentFactoryUsingGradientClipping(BestParamCriteria.BEST_ON_DEV, 0.05, 5); break;
-        	case "adam" : optimizer = OptimizerFactory.getGradientDescentFactoryUsingAdaM(BestParamCriteria.BEST_ON_DEV); break;
-        	default: optimizer = OptimizerFactory.getLBFGSFactory(); break;
-        }
-        embedding = ns.getString("embedding");
-        gpuId = ns.getInt("gpuid");
         l2 = ns.getDouble("l2val");
         List<Object> evalDevOps = ns.getList("evalDev");
         evalOnDev =evalDevOps.get(0) instanceof Boolean ? (boolean)evalDevOps.get(0): Boolean.valueOf((String)evalDevOps.get(0));
         evalFreq = evalDevOps.get(1) instanceof Integer ? (int)evalDevOps.get(1) : Integer.valueOf((String)evalDevOps.get(1));
-        NetworkConfig.USE_NEURAL_FEATURES = ns.getBoolean("useLSTM");
         saveModel = ns.getBoolean("saveModel");
         readModel = ns.getBoolean("readModel");
-        fixEmbedding = ns.getBoolean("fixEmbedding");
-        dropout = ns.getDouble("dropout");
-        embeddingSize = ns.getInt("embeddingSize");
-        hiddenSize = ns.getInt("hiddenSize");
-        NetworkConfig.OS = ns.getString("system");
+        useCharFeats = ns.getBoolean("useCharFeats");
+        current_model = (Model_Type)ns.get("modelType");
         for (String key : ns.getAttrs().keySet()) {
         	System.err.println(key + "=" + ns.get(key));
         }

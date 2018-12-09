@@ -22,16 +22,15 @@ public class CharacterNetworkCompiler extends NetworkCompiler{
 	private static final long serialVersionUID = -2388666010977956073L;
 
 	public enum NodeType {Leaf, Node, Root};
-	public static final int _size = 150;
-	public BaseNetwork genericUnlabeledNetwork;
+	public static final int _size = 1300;
 	//0: should be start tag
 	//length -1: should be end tag;
 	private List<String> labels;
 	private Map<String, Integer> labelIndex;
-	private final boolean DEBUG = false;
+	private final boolean DEBUG = true;
 	
 	static {
-		NetworkIDMapper.setCapacity(new int[]{_size, 50, 3});
+		NetworkIDMapper.setCapacity(new int[]{_size, _size, 80, 3});
 	}
 	
 	public CharacterNetworkCompiler(List<String> labels){
@@ -40,21 +39,23 @@ public class CharacterNetworkCompiler extends NetworkCompiler{
 		for (int l = 0; l < this.labels.size(); l++) {
 			this.labelIndex.put(this.labels.get(l), l);
 		}
+		System.out.println("number of labels: " + this.labels.size());
+		System.out.println(this.labelIndex);
 	}
 	
 	public long toNode_leaf(){
 		//since 0 is the start_tag index;
-		int[] arr = new int[]{0, 0, NodeType.Leaf.ordinal()};
+		int[] arr = new int[]{0, 0, 0, NodeType.Leaf.ordinal()};
 		return NetworkIDMapper.toHybridNodeID(arr);
 	}
 	
 	public long toNode(int pos, int char_pos, int tag_id){
-		int[] arr = new int[]{pos, tag_id, NodeType.Node.ordinal()};
+		int[] arr = new int[]{pos, char_pos, tag_id, NodeType.Node.ordinal()};
 		return NetworkIDMapper.toHybridNodeID(arr);
 	}
 	
 	public long toNode_root(int size){
-		int[] arr = new int[]{size - 1, labels.size(), NodeType.Root.ordinal()};
+		int[] arr = new int[]{size - 1, labels.size(), labels.size(), NodeType.Root.ordinal()};
 		return NetworkIDMapper.toHybridNodeID(arr);
 	}
 
@@ -131,21 +132,37 @@ public class CharacterNetworkCompiler extends NetworkCompiler{
 		for(int i = 0; i < inst.size(); i++){
 			String word = sent.get(i).getForm();
 			for (int j = 0; j < word.length(); j++) {
-				long[] currentNodes = new long[]{CConfig.Char_suffix.length};
-				for (int t = 0; t < CConfig.Char_suffix.length; t++) {
-					long node = toNode(i, j, this.labelIndex.get( inst.getOutput().get(i) + CConfig.Char_suffix[t]));
-					lcrfNetwork.addNode(node);
-					currentNodes[t] = -1;
+				String out_label = inst.getOutput().get(i);
+				long[] currentNodes = new long[out_label.equals("O") ? 1: CConfig.Char_suffix.length];
+				if (out_label.equals("O")) {
+					long node = toNode(i, j, this.labelIndex.get(out_label));
+					currentNodes[0] = -1;
 					for (long child: children) {
 						if (child == -1) continue;
 						int[] arr = NetworkIDMapper.toHybridNodeArray(child);
-						if (this.checkConstraint(arr[0], arr[1], this.labels.get(arr[2]), i, j, inst.getOutput().get(i) + CConfig.Char_suffix[t],
-								child == leaf, false)) {
+						if (this.checkConstraint(arr[0], arr[1], this.labels.get(arr[2]), i, j, out_label, child == leaf, false) && lcrfNetwork.contains(child)) {
+							lcrfNetwork.addNode(node);
 							lcrfNetwork.addEdge(node, new long[]{child});
-							currentNodes[t] = node;
+							currentNodes[0] = node;
+						}
+					}
+				} else {
+					for (int t = 0; t < CConfig.Char_suffix.length; t++) {
+						long node = toNode(i, j, this.labelIndex.get(out_label + CConfig.Char_suffix[t]));
+						currentNodes[t] = -1;
+						for (long child: children) {
+							if (child == -1) continue;
+							int[] arr = NetworkIDMapper.toHybridNodeArray(child);
+							if (this.checkConstraint(arr[0], arr[1], this.labels.get(arr[2]), i, j, inst.getOutput().get(i) + CConfig.Char_suffix[t],
+									child == leaf, false) && lcrfNetwork.contains(child)) {
+								lcrfNetwork.addNode(node);
+								lcrfNetwork.addEdge(node, new long[]{child});
+								currentNodes[t] = node;
+							}
 						}
 					}
 				}
+				
 				children = currentNodes;
 			}
 		}
@@ -153,7 +170,6 @@ public class CharacterNetworkCompiler extends NetworkCompiler{
 		lcrfNetwork.addNode(root);
 		for (long child : children) {
 			if (child == -1) continue;
-			lcrfNetwork.addEdge(root, children);
 			int[] arr = NetworkIDMapper.toHybridNodeArray(child);
 			if (this.checkConstraint(arr[0], arr[1], this.labels.get(arr[2]), inst.size(), inst.size(), "ROOT",
 					child == leaf, true)) {
@@ -162,8 +178,11 @@ public class CharacterNetworkCompiler extends NetworkCompiler{
 		}
 		BaseNetwork network = lcrfNetwork.build(networkId, inst, param, this);
 		if(DEBUG){
-			if (!genericUnlabeledNetwork.contains(network))
+			BaseNetwork unlabeled = this.compileUnlabeled(networkId, instance, param);
+			if (!unlabeled.contains(network)) {
+				System.err.println(instance.getInput().toString());
 				System.err.println("not contains");
+			}
 		}
 		return network;
 	}
@@ -178,18 +197,19 @@ public class CharacterNetworkCompiler extends NetworkCompiler{
 		for(int i = 0; i < inst.size(); i++){
 			String word = sent.get(i).getForm();
 			for (int j = 0; j < word.length(); j++) {
-				long[] currentNodes = new long[]{CConfig.Char_suffix.length};
+				long[] currentNodes = new long[this.labels.size()];
 				for (int t = 0; t < this.labels.size(); t++) {
 					long node = toNode(i, j, t);
-					lcrfNetwork.addNode(node);
 					currentNodes[t] = -1;
 					for (long child: children) {
 						if (child == -1) continue;
 						int[] arr = NetworkIDMapper.toHybridNodeArray(child);
-						if (this.checkConstraint(arr[0], arr[1], this.labels.get(arr[2]), i, j, this.labels.get(t), child == leaf, false)) {
+						if (this.checkConstraint(arr[0], arr[1], this.labels.get(arr[2]), i, j, this.labels.get(t), child == leaf, false)  && lcrfNetwork.contains(child)) {
+							lcrfNetwork.addNode(node);
 							lcrfNetwork.addEdge(node, new long[]{child});
 							currentNodes[t] = node;
 						}
+						
 					}
 				}
 				children = currentNodes;
@@ -199,7 +219,6 @@ public class CharacterNetworkCompiler extends NetworkCompiler{
 		lcrfNetwork.addNode(root);
 		for (long child : children) {
 			if (child == -1) continue;
-			lcrfNetwork.addEdge(root, children);
 			int[] arr = NetworkIDMapper.toHybridNodeArray(child);
 			if (this.checkConstraint(arr[0], arr[1], this.labels.get(arr[2]), inst.size(), inst.size(), "ROOT",
 					child == leaf, true)) {
@@ -220,6 +239,8 @@ public class CharacterNetworkCompiler extends NetworkCompiler{
 		int rootIdx = Arrays.binarySearch(lcrfNetwork.getAllNodes(),root);
 		//System.err.println(rootIdx+" final score:"+network.getMax(rootIdx));
 		String[] pred_arr = new String[result.size()];
+		List<List<String>> chars = new ArrayList<>();
+		for (int i = 0; i < pred_arr.length;i++) chars.add(new ArrayList<>());
 		while (rootIdx != 0) {
 			int child_k = lcrfNetwork.getMaxPath(rootIdx)[0];
 			long child = lcrfNetwork.getNode(child_k);
@@ -227,9 +248,14 @@ public class CharacterNetworkCompiler extends NetworkCompiler{
 			int word_pos = arr[0];
 //			int char_pos = arr[1];
 			int tagID = arr[2];
+			NodeType type = NodeType.values()[arr[3]];
+			if (type == NodeType.Leaf) {
+				break;
+			}
 			String resEntity = this.labels.get(tagID);
 			if(resEntity.startsWith(EConf.S_)) resEntity = EConf.B_+resEntity.substring(2);
 			if(resEntity.startsWith(EConf.E_)) resEntity = EConf.I_+resEntity.substring(2);
+			chars.get(word_pos).add(0, resEntity);
 			if(!resEntity.equals(EConf.O)) resEntity = resEntity.substring(0, resEntity.length()-2);
 			pred_arr[word_pos] = resEntity;
 			rootIdx = child_k;
@@ -238,6 +264,7 @@ public class CharacterNetworkCompiler extends NetworkCompiler{
 			prediction.add(entity);
 		}
 		result.setPrediction(prediction);
+		result.setDetails(chars);
 		return result;
 	}
 	

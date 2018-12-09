@@ -3,9 +3,7 @@ package org.statnlp.example.linear_ne;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import org.statnlp.commons.io.RAWF;
 import org.statnlp.commons.types.Sentence;
@@ -14,9 +12,13 @@ import org.statnlp.commons.types.WordToken;
 public class EReader {
 
 	public List<String> labels;
+	public boolean characterModel;
+	public String dataset;
 	
-	public EReader(List<String> labels) {
+	public EReader(List<String> labels, boolean characterModel, String dataset) {
 		this.labels = labels;
+		this.characterModel = characterModel;
+		this.dataset = dataset;
 	}
 	
 	/**
@@ -55,9 +57,25 @@ public class EReader {
 							if (nextEnt.equals(EConf.O) || nextEnt.startsWith(EConf.B_)) output.set(i, EConf.E_ + currEnt.substring(2));
 						}
 					}
-					if (isTraining && !this.labels.contains(output.get(i))) {
-						this.labels.add(output.get(i));
+					if (!this.characterModel) {
+						if (isTraining && !this.labels.contains(output.get(i))) {
+							this.labels.add(output.get(i));
+						}
+					} else {
+						if (isTraining) {
+							if (output.get(i).equals(EConf.O)  ) {
+								if ( !this.labels.contains(output.get(i)))
+									this.labels.add(output.get(i));
+							} else {
+								if (!this.labels.contains(output.get(i)+ "-B") ) this.labels.add(output.get(i) + "-B");
+								if (!this.labels.contains(output.get(i)+ "-I") ) this.labels.add(output.get(i) + "-I");
+								if (!this.labels.contains(output.get(i)+ "-E") ) this.labels.add(output.get(i) + "-E");
+								if (!this.labels.contains(output.get(i)+ "-S") ) this.labels.add(output.get(i) + "-S");
+								
+							}
+						}
 					}
+					
 				}
 				maxLen = Math.max(maxLen, sent.length());
 				EInst inst = new EInst(index++, 1.0, sent, output);
@@ -71,39 +89,14 @@ public class EReader {
 				String[] values = line.split(" ");
 				String entity = values[2];
 				output.add(entity);
-				words.add(new WordToken(values[0],values[1], -1));
+				String posTag = values[1];
+				words.add(new WordToken(values[0],posTag, -1));
 			}
 		}
 		br.close();
 		System.err.println("[Info] total:"+ insts.size()+" Instance. ");
 		System.err.println("[Info] maximum length:"+ maxLen);
 		return insts.toArray(new EInst[insts.size()]);
-	}
-	
-	/**
-	 * Replace singelton with UNK.
-	 * @param instances
-	 */
-	public void preprocess(EInst[] instances, boolean lowercase, boolean isTraining) {
-		Map<String, Integer> wordCount = new HashMap<>();
-		for(EInst inst : instances) {
-			Sentence sent = inst.getInput();
-			for(int p = 0; p < sent.length(); p++) {
-				String word = sent.get(p).getForm();
-				if (lowercase) {
-					sent.get(p).setForm(word.toLowerCase());
-					word = sent.get(p).getForm();
-				}
-				word = word.replaceAll("\\d", "0");
-				sent.get(p).setForm(word);
-				if (wordCount.containsKey(word)) {
-					int num =  wordCount.get(word);
-					wordCount.put(word, num + 1);
-				} else {
-					wordCount.put(word, 1);
-				}
-			}
-		}
 	}
 
 }

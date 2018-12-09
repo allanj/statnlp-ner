@@ -10,6 +10,8 @@ public class EInst extends BaseInstance<EInst, Sentence, List<String>> {
 
 	private static final long serialVersionUID = 1851514046050983662L;
 	
+	public List<List<String>> detailedCharacterPrediction;
+	
 	public EInst(int instanceId, double weight) {
 		super(instanceId, weight);
 	}
@@ -31,5 +33,9 @@ public class EInst extends BaseInstance<EInst, Sentence, List<String>> {
 	
 	public List<String> duplicateOutput() {
 		return this.output;
+	}
+
+	public void setDetails(List<List<String>> detailedCharacterPrediction) {
+		this.detailedCharacterPrediction = detailedCharacterPrediction;
 	}
 }

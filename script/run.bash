@@ -2,10 +2,23 @@
 
 
 
+train=-1
+dev=-1
+test=-1
 
-java -cp statnlp-ner-1.0.jar org.statnlp.example.linear_ne.EMainCRF --train_num -1 \
-     --test_num -1 -it 4000 -t 40 --useEmb true --useDiscrete false --useBigram true --wordHalfWindow 1  > logs/emb_2gram_window1.log 2>&1 
+datasets=(spanish german dutch)
+models=(linear latent_character)
+prefix=(false true)
 
-java -cp statnlp-ner-1.0.jar org.statnlp.example.linear_ne.EMainCRF --train_num -1 \
-     --test_num -1 -it 4000 -t 40 --useEmb true --useDiscrete false --useBigram true --wordHalfWindow 2  > logs/emb_2gram_window2.log 2>&1 
-.
+for (( d=0; d<${#datasets[@]}; d++  )) do
+	dataset=${datasets[$d]}	
+	for (( r=0; r<${#prefix[@]}; r++  )) do
+		ucf=${prefix[$r]}
+		for (( i=0; i<${#models[@]}; i++  )) do
+			model=${models[$i]}
+			logFile=logs/${model}_${dataset}_prefix_${ucf}.log
+			java -cp statnlp-ner-1.0.jar org.statnlp.example.linear_ne.EMain --train_num ${train} --dev_num ${dev} --test_num ${test} -t 40 --dataset ${dataset} \
+			                                                                 -it 8000 -ucf ${ucf} -mt ${model} > ${logFile} 2>&1
+		done
+	done
+done

@@ -19,7 +19,7 @@ public class ECRFNetworkCompiler extends NetworkCompiler{
 	private static final long serialVersionUID = -2388666010977956073L;
 
 	public enum NodeType {Leaf, Node, Root};
-	public static final int _size = 150;
+	public static final int _size = 1300;
 	public BaseNetwork genericUnlabeledNetwork;
 	//0: should be start tag
 	//length -1: should be end tag;
