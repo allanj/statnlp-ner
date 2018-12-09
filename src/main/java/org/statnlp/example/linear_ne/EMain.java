@@ -30,9 +30,9 @@ public class EMain {
 	
 	public static boolean DEBUG = false;
 
-	public static int trainNumber = 500;
-	public static int devNumber = 500;
-	public static int testNumber = 500;
+	public static int trainNumber = -1;
+	public static int devNumber = -1;
+	public static int testNumber = -1;
 	public static int numIteration = 4000;
 	public static int numThreads = 8;
 	public static double l2 = 0.01;

@@ -18,7 +18,8 @@ for (( d=0; d<${#datasets[@]}; d++  )) do
 			model=${models[$i]}
 			logFile=logs/${model}_${dataset}_prefix_${ucf}.log
 			java -cp statnlp-ner-1.0.jar org.statnlp.example.linear_ne.EMain --train_num ${train} --dev_num ${dev} --test_num ${test} -t 40 --dataset ${dataset} \
-			                                                                 -it 8000 -ucf ${ucf} -mt ${model} > ${logFile} 2>&1
+			                                                                 -it 8000 -ucf ${ucf} -mt ${model} --saveModel true > ${logFile} 2>&1
 		done
 	done
 done
+ 
